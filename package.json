@@ -1,0 +1,47 @@
+{
+  "name": "soundboard",
+  "productName": "Soundboard",
+  "version": "1.0.0",
+  "description": "Vincule áudios a teclas do teclado e toque com um toque.",
+  "main": "src/main.js",
+  "author": "Yuri Atzler <atzleryuri@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.atzler.soundboard",
+    "productName": "Soundboard",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.music"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Audio"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  }
+}
