@@ -119,6 +119,15 @@ async function applySink(audio) {
   }
 }
 
+const stopTimers = new Map(); // id -> timeout que para o som no fim do trecho
+
+// trecho tocado de um som, em segundos; end cai na duração quando o som não foi cortado
+function span(sound, audio) {
+  const start = sound.start || 0;
+  const end = sound.end ?? audio.duration;
+  return { start, end };
+}
+
 async function play(id) {
   const sound = state.sounds.find((s) => s.id === id);
   if (!sound) return;
@@ -129,6 +138,7 @@ async function play(id) {
     audio.preload = 'auto';
     audio.addEventListener('play', () => rows.get(id)?.classList.add('playing'));
     const done = () => {
+      clearTimeout(stopTimers.get(id));
       const row = rows.get(id);
       row?.classList.remove('playing');
       setProgress(id, 0);
@@ -136,14 +146,24 @@ async function play(id) {
     audio.addEventListener('ended', done);
     audio.addEventListener('pause', done);
     audio.addEventListener('timeupdate', () => {
-      if (audio.duration) setProgress(id, audio.currentTime / audio.duration);
+      const current = state.sounds.find((s) => s.id === id);
+      if (!current || !audio.duration || audio.paused) return;
+      const { start, end } = span(current, audio);
+      setProgress(id, (audio.currentTime - start) / (end - start));
     });
     players.set(id, audio);
   }
+  clearTimeout(stopTimers.get(id));
   audio.volume = effectiveVolume(sound);
-  audio.currentTime = 0;
+  audio.currentTime = sound.start || 0;
   await applySink(audio);
-  audio.play().catch(() => toast('Não foi possível tocar este arquivo'));
+  audio
+    .play()
+    .then(() => {
+      // o timeupdate só vem ~4x por segundo, então o fim do trecho é por timer
+      if (sound.end) stopTimers.set(id, setTimeout(() => audio.pause(), (sound.end - audio.currentTime) * 1000));
+    })
+    .catch(() => toast('Não foi possível tocar este arquivo'));
 
   const row = rows.get(id);
   if (row) {
@@ -281,14 +301,8 @@ function buildRow(id) {
     applyState(await sb.removeSound(id));
   });
 
-  const name = row.querySelector('.name');
-  name.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === 'Escape') name.blur();
-  });
-  name.addEventListener('change', async () => {
-    const value = name.value.trim() || 'Sem nome';
-    applyState(await sb.updateSound(id, { name: value }));
-  });
+  row.querySelector('.name').addEventListener('click', () => editSound(id));
+  row.querySelector('.edit').addEventListener('click', () => editSound(id));
 
   const vol = row.querySelector('.vol');
   vol.addEventListener('input', () => {
@@ -312,8 +326,7 @@ function updateRow(row, sound) {
   const warn = row.querySelector('.key-warn');
   warn.hidden = !problem && !!sound.keyLabel;
   warn.title = problem || 'Este som não tem tecla: só toca pelo botão ▶. Clique em "Sem tecla" para vincular uma.';
-  const name = row.querySelector('.name');
-  if (document.activeElement !== name) name.value = sound.name;
+  row.querySelector('.name').textContent = sound.name;
   const vol = row.querySelector('.vol');
   vol.value = sound.volume;
   paintRange(vol);
@@ -560,10 +573,13 @@ document.addEventListener('input', (e) => {
 
 // ---------- captura de tecla ----------
 
-// alvos da captura: id de um som, STOP (tecla de "parar tudo") ou profileTarget(id)
+// alvos da captura: id de um som, STOP (tecla de "parar tudo"), profileTarget(id) ou EDITOR (o modal)
 const STOP = 'stop';
 const PROFILE = 'profile:';
+const EDITOR = 'editor';
 const profileTarget = (id) => PROFILE + id;
+// som é obrigado a ter tecla, então só "parar tudo" e perfis aceitam o Backspace para remover
+const canUnbind = (id) => id === STOP || id.startsWith(PROFILE);
 let capturing = null;
 
 function captureKey(id) {
@@ -574,8 +590,12 @@ function captureKey(id) {
     const profile = state.profiles.find((p) => profileTarget(p.id) === id);
     title = `Tecla para abrir "${profile.name}"`;
   }
+  if (id === EDITOR) title = `Tecla para "${$('#edName').value.trim() || 'este som'}"`;
   $('#captureTitle').textContent = title;
   $('#captureKey').textContent = '?';
+  $('#captureHint').innerHTML = canUnbind(id)
+    ? captureHint
+    : 'Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/><kbd>Esc</kbd> cancela';
   $('#capture').hidden = false;
   // desliga os atalhos globais para a tecla chegar aqui mesmo se já estiver registrada
   sb.setCapturing(true);
@@ -596,6 +616,26 @@ function bindKey(id, sc) {
   return sb.updateSound(id, keys);
 }
 
+// quem perde a tecla se ela for para o alvo (o main faz a troca; aqui é só para avisar)
+function keyConflicts(accelerator, id) {
+  const self = id === EDITOR ? editor.draft.id : id;
+  const lost = [];
+  const sound = state.sounds.find((s) => s.accelerator === accelerator && s.id !== self);
+  if (sound) lost.push(`sai de "${sound.name}"`);
+  // "parar tudo" e as teclas de perfil valem em qualquer perfil, então tiram a tecla dos outros também
+  if (id === STOP || id.startsWith(PROFILE)) {
+    for (const p of state.profiles) {
+      if (p.id === state.activeProfile) continue;
+      const other = p.soundKeys.find((s) => s.accelerator === accelerator);
+      if (other) lost.push(`sai de "${other.name}" (${p.name})`);
+    }
+  }
+  const profile = state.profiles.find((p) => p.accelerator === accelerator && profileTarget(p.id) !== id);
+  if (profile) lost.push(`deixa de abrir o perfil "${profile.name}"`);
+  if (id !== STOP && state.stopAccelerator === accelerator) lost.push('deixa de parar todos os sons');
+  return lost;
+}
+
 async function finishCapture(e) {
   const id = capturing;
   if (e.code === 'Escape') {
@@ -604,6 +644,7 @@ async function finishCapture(e) {
     return;
   }
   if (e.code === 'Backspace') {
+    if (!canUnbind(id)) return; // tecla de som é obrigatória
     $('#capture').hidden = true;
     await endCapture();
     applyState(await bindKey(id, null));
@@ -622,23 +663,14 @@ async function finishCapture(e) {
   }
   $('#captureKey').textContent = sc.keyLabel;
   setTimeout(() => ($('#capture').hidden = true), 180);
-  await endCapture();
-
-  // quem perde a tecla (o main faz a troca; aqui é só para avisar)
-  const lost = [];
-  const sound = state.sounds.find((s) => s.accelerator === sc.accelerator && s.id !== id);
-  if (sound) lost.push(`foi movida de "${sound.name}"`);
-  // "parar tudo" e as teclas de perfil valem em qualquer perfil, então tiram a tecla dos outros também
-  if (id === STOP || id.startsWith(PROFILE)) {
-    for (const p of state.profiles) {
-      if (p.id === state.activeProfile) continue;
-      const other = p.soundKeys.find((s) => s.accelerator === sc.accelerator);
-      if (other) lost.push(`foi removida de "${other.name}" (${p.name})`);
-    }
+  const lost = keyConflicts(sc.accelerator, id);
+  if (id === EDITOR) {
+    // no modal a tecla só vale ao salvar
+    applyState(await endCapture());
+    setEditorKey(sc, lost, numpadWithoutNumLock(e));
+    return;
   }
-  const profile = state.profiles.find((p) => p.accelerator === sc.accelerator && profileTarget(p.id) !== id);
-  if (profile) lost.push(`deixou de abrir o perfil "${profile.name}"`);
-  if (id !== STOP && state.stopAccelerator === sc.accelerator) lost.push('deixou de parar todos os sons');
+  await endCapture();
 
   const next = await bindKey(id, sc);
   applyState(next);
@@ -649,6 +681,301 @@ async function finishCapture(e) {
     toast(`${sc.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
   }
 }
+
+// ---------- modal de adicionar/editar ----------
+
+const MIN_SPAN = 0.1; // trecho mínimo, em segundos
+const editor = {
+  queue: [], // candidatos ({ path, name, url }) ainda não abertos
+  total: 0, // tamanho da fila atual, para o "2 de 5"
+  draft: null, // o som sendo editado; tem id quando já existe
+  duration: 0, // 0 enquanto não decodificou (ou se falhou)
+  peaks: null,
+  load: 0, // descarta decodificações de um rascunho anterior
+  preview: null,
+};
+const ed = {
+  modal: $('#editor'), name: $('#edName'), wave: $('#edWave'), canvas: $('#edWave canvas'),
+  msg: $('#edWave .wave-msg'), playhead: $('#edWave .playhead'), times: $('#edTimes'),
+  key: $('#edKey'), note: $('#edKeyNote'), save: $('#edSave'), skip: $('#edSkip'), preview: $('#edPreview'),
+};
+const editorOpen = () => !ed.modal.hidden;
+
+// escolhidos pelo botão ou soltos na janela: entram na fila do modal
+function enqueue(files) {
+  if (!files.length) {
+    toast('Nenhum arquivo de áudio reconhecido');
+    return;
+  }
+  editor.queue.push(...files);
+  editor.total += files.length;
+  if (!editor.draft) nextInQueue();
+  else renderEditor();
+}
+
+function nextInQueue() {
+  const c = editor.queue.shift();
+  if (!c) {
+    closeEditor();
+    return;
+  }
+  openEditor({ path: c.path, url: c.url, name: c.name, start: 0, end: null, accelerator: null, keyLabel: null, volume: 1 });
+}
+
+function editSound(id) {
+  const s = state.sounds.find((x) => x.id === id);
+  if (!s || editor.draft) return;
+  editor.total = 0;
+  openEditor({ id, url: s.url, name: s.name, start: s.start || 0, end: s.end ?? null, accelerator: s.accelerator, keyLabel: s.keyLabel, volume: s.volume });
+}
+
+async function openEditor(draft) {
+  stopPreview();
+  editor.draft = draft;
+  editor.duration = 0;
+  editor.peaks = null;
+  ed.note.textContent = '';
+  ed.note.classList.remove('warn');
+  ed.name.value = draft.name;
+  ed.msg.textContent = 'Carregando…';
+  ed.modal.hidden = false;
+  renderEditor();
+  ed.name.focus();
+  ed.name.select();
+
+  const load = ++editor.load;
+  try {
+    const bytes = await sb.readAudio(draft.id ? { id: draft.id } : { path: draft.path });
+    if (!bytes) throw new Error('sem bytes');
+    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(data);
+    if (load !== editor.load) return;
+    editor.duration = buffer.duration;
+    editor.peaks = computePeaks(buffer, 800);
+    ed.msg.textContent = '';
+  } catch {
+    if (load !== editor.load) return;
+    ed.msg.textContent = 'Não foi possível ler este áudio';
+  }
+  renderEditor();
+}
+
+function closeEditor() {
+  stopPreview();
+  editor.load++;
+  editor.queue = [];
+  editor.total = 0;
+  editor.draft = null;
+  ed.modal.hidden = true;
+}
+
+// maior amplitude de cada fatia do áudio (todos os canais), de 0 a 1
+function computePeaks(buffer, bins) {
+  const peaks = new Float32Array(bins);
+  const size = buffer.length / bins;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < bins; i++) {
+      let max = peaks[i];
+      const end = Math.min(data.length, Math.floor((i + 1) * size));
+      // pula amostras nas fatias grandes; o pico visual quase não muda
+      const step = Math.max(1, Math.floor(size / 400));
+      for (let j = Math.floor(i * size); j < end; j += step) {
+        const v = Math.abs(data[j]);
+        if (v > max) max = v;
+      }
+      peaks[i] = max;
+    }
+  }
+  const top = Math.max(...peaks) || 1;
+  return peaks.map((p) => p / top);
+}
+
+const trimEnd = () => editor.draft.end ?? editor.duration;
+
+function formatTime(t) {
+  const m = Math.floor(t / 60);
+  const sec = (t - m * 60).toFixed(1).padStart(4, '0');
+  return `${m}:${sec}`;
+}
+
+function renderEditor() {
+  const d = editor.draft;
+  if (!d) return;
+  const editing = !!d.id;
+  const step = editor.total - editor.queue.length;
+  $('#edTitle').textContent = editing ? 'Editar som' : 'Adicionar áudio';
+  $('#edStep').textContent = !editing && editor.total > 1 ? `${step} de ${editor.total}` : '';
+  ed.skip.hidden = editing || editor.total < 2;
+  ed.save.textContent = editing ? 'Salvar' : 'Adicionar';
+
+  ed.key.textContent = d.keyLabel || 'Escolher tecla';
+  ed.key.classList.toggle('unbound', !d.keyLabel);
+  if (!ed.note.textContent) ed.note.textContent = d.keyLabel ? 'Clique para trocar' : 'Clique e aperte a tecla que vai tocar o som';
+
+  const loaded = editor.duration > 0;
+  // som novo que não decodifica provavelmente nem toca; um existente ainda pode ter nome e tecla trocados
+  ed.save.disabled = !d.keyLabel || (!editing && !loaded);
+  ed.save.title = !d.keyLabel ? 'Escolha uma tecla para continuar' : '';
+  ed.wave.classList.toggle('empty', !loaded);
+  ed.preview.disabled = !loaded;
+  $('#edReset').disabled = !loaded || (d.start === 0 && d.end === null);
+  if (!loaded) {
+    ed.times.textContent = '';
+    drawWave();
+    return;
+  }
+  const end = trimEnd();
+  ed.wave.style.setProperty('--start', `${(d.start / editor.duration) * 100}%`);
+  ed.wave.style.setProperty('--end', `${(end / editor.duration) * 100}%`);
+  ed.times.textContent = `${formatTime(d.start)} → ${formatTime(end)} · ${(end - d.start).toFixed(1)} s`;
+  drawWave();
+}
+
+function drawWave() {
+  const canvas = ed.canvas;
+  const dpr = devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr;
+  const h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const peaks = editor.peaks;
+  if (!peaks) return;
+  const css = getComputedStyle(document.documentElement);
+  const on = css.getPropertyValue('--accent');
+  const off = css.getPropertyValue('--track');
+  const bar = 2 * dpr;
+  const gap = 1 * dpr;
+  const start = editor.draft.start / editor.duration;
+  const end = trimEnd() / editor.duration;
+  for (let x = 0; x < w; x += bar + gap) {
+    const ratio = x / w;
+    const peak = peaks[Math.floor(ratio * peaks.length)];
+    const bh = Math.max(2 * dpr, peak * (h - 16 * dpr));
+    ctx.fillStyle = ratio >= start && ratio <= end ? on : off;
+    ctx.fillRect(x, (h - bh) / 2, bar, bh);
+  }
+}
+
+// arrastar na forma de onda move a alça mais próxima do ponteiro
+ed.wave.addEventListener('pointerdown', (e) => {
+  if (!editor.duration) return;
+  const rect = ed.wave.getBoundingClientRect();
+  const timeAt = (x) => Math.min(editor.duration, Math.max(0, ((x - rect.left) / rect.width) * editor.duration));
+  const t = timeAt(e.clientX);
+  const d = editor.draft;
+  const which = Math.abs(t - d.start) <= Math.abs(t - trimEnd()) ? 'start' : 'end';
+  ed.wave.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const time = timeAt(ev.clientX);
+    if (which === 'start') d.start = Math.min(time, trimEnd() - MIN_SPAN);
+    // end colado no fim vira null ("até o fim"), para não cortar por arredondamento
+    else d.end = time >= editor.duration - 0.05 ? null : Math.max(time, d.start + MIN_SPAN);
+    d.start = Math.max(0, d.start);
+    renderEditor();
+  };
+  move(e);
+  ed.wave.addEventListener('pointermove', move);
+  ed.wave.addEventListener('lostpointercapture', () => ed.wave.removeEventListener('pointermove', move), { once: true });
+});
+
+$('#edReset').addEventListener('click', () => {
+  editor.draft.start = 0;
+  editor.draft.end = null;
+  renderEditor();
+});
+
+// pré-escuta do trecho, na mesma saída e volume em que o som vai tocar
+async function togglePreview() {
+  if (editor.preview) {
+    stopPreview();
+    return;
+  }
+  const d = editor.draft;
+  const audio = new Audio(d.url);
+  editor.preview = audio;
+  audio.volume = Math.max(0, Math.min(1, (d.volume ?? 1) * state.masterVolume));
+  audio.currentTime = d.start;
+  await applySink(audio);
+  if (editor.preview !== audio) return;
+  ed.preview.classList.add('playing');
+  ed.preview.querySelector('span').textContent = 'Parar';
+  ed.playhead.hidden = false;
+  audio.addEventListener('ended', stopPreview);
+  audio.play().catch(stopPreview);
+  const tick = () => {
+    if (editor.preview !== audio) return;
+    if (audio.currentTime >= trimEnd()) {
+      stopPreview();
+      return;
+    }
+    ed.playhead.style.left = `${(audio.currentTime / editor.duration) * 100}%`;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function stopPreview() {
+  editor.preview?.pause();
+  editor.preview = null;
+  ed.preview.classList.remove('playing');
+  ed.preview.querySelector('span').textContent = 'Ouvir trecho';
+  ed.playhead.hidden = true;
+}
+
+ed.preview.addEventListener('click', togglePreview);
+ed.key.addEventListener('click', () => captureKey(EDITOR));
+
+function setEditorKey(sc, lost, numLockOff) {
+  const d = editor.draft;
+  if (!d) return;
+  d.accelerator = sc.accelerator;
+  d.keyLabel = sc.keyLabel;
+  let note = '';
+  if (lost.length) note = `Ao salvar, ${sc.keyLabel} ${lost.join(' e ')}`;
+  else if (numLockOff) note = 'Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco';
+  ed.note.textContent = note;
+  ed.note.classList.toggle('warn', !!note);
+  renderEditor();
+}
+
+async function saveEditor() {
+  const d = editor.draft;
+  if (!d || ed.save.disabled) return;
+  ed.save.disabled = true; // Enter duas vezes não adiciona duas vezes; o renderEditor do próximo reabilita
+  stopPreview();
+  const fields = {
+    name: ed.name.value.trim() || 'Sem nome',
+    accelerator: d.accelerator,
+    keyLabel: d.keyLabel,
+  };
+  if (editor.duration) Object.assign(fields, { start: d.start, end: d.end });
+  if (d.id) {
+    applyState(await sb.updateSound(d.id, fields));
+  } else {
+    applyState(await sb.addSound({ path: d.path, ...fields }));
+    if (state.failedHotkeys.includes(d.accelerator)) toast(`${d.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
+  }
+  // segue para o próximo da fila (arquivos soltos durante a edição também entram nela)
+  editor.draft = null;
+  nextInQueue();
+}
+
+$('#editorForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  saveEditor();
+});
+ed.skip.addEventListener('click', nextInQueue);
+$('#edCancel').addEventListener('click', closeEditor);
+$('#edClose').addEventListener('click', closeEditor);
+ed.modal.addEventListener('mousedown', (e) => {
+  if (e.target === ed.modal) closeEditor();
+});
+window.addEventListener('resize', () => editorOpen() && drawWave());
 
 // ---------- teclado ----------
 
@@ -687,6 +1014,14 @@ window.addEventListener('keydown', (e) => {
     finishCapture(e);
     return;
   }
+  if (editorOpen()) {
+    // com o modal aberto, as teclas são dele (Enter confirma pelo submit do form)
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      closeEditor();
+    }
+    return;
+  }
   if (e.repeat) return;
   // Ctrl/Cmd+F foca a busca, a não ser que a combinação esteja vinculada a algo
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && !e.altKey && !e.shiftKey && !isBound(eventToShortcut(e).accelerator)) {
@@ -715,7 +1050,7 @@ sb.onState(applyState);
 
 // ---------- topo ----------
 
-$('#add').addEventListener('click', async () => applyState(await sb.pickSounds()));
+$('#add').addEventListener('click', async () => enqueue(await sb.pickSounds()));
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
 
@@ -749,11 +1084,7 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   dragDepth = 0;
   drop.hidden = true;
-  const before = state.sounds.length;
-  const next = await sb.importFiles(e.dataTransfer.files);
-  applyState(next);
-  const added = next.sounds.length - before;
-  if (added === 0) toast('Nenhum arquivo de áudio reconhecido');
+  enqueue(await sb.checkFiles(e.dataTransfer.files));
 });
 
 // ---------- toast ----------

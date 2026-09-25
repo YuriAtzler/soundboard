@@ -198,9 +198,28 @@ function switchProfile(id) {
   registerShortcuts();
 }
 
+const isAudio = (file) => AUDIO_EXTS.includes(path.extname(file).toLowerCase().slice(1));
+
+// arquivos que o usuário escolheu, ainda sem copiar: o renderer abre o modal para cada um
+function candidates(paths) {
+  return paths.filter(isAudio).map((p) => ({
+    path: p,
+    name: path.basename(p, path.extname(p)),
+    url: pathToFileURL(p).href,
+  }));
+}
+
+// aplica no som os campos editáveis; start/end são o trecho tocado, em segundos (end null = até o fim)
+function patchSound(s, patch) {
+  for (const k of ['name', 'accelerator', 'keyLabel', 'volume', 'color']) if (k in patch) s[k] = patch[k];
+  const ms = (t) => Math.round(Number(t) * 1000) / 1000;
+  if ('start' in patch) s.start = Math.max(0, ms(patch.start) || 0);
+  if ('end' in patch) s.end = ms(patch.end) > (s.start || 0) ? ms(patch.end) : null;
+}
+
 function importFile(srcPath) {
+  if (!isAudio(srcPath) || !fs.existsSync(srcPath)) return null;
   const ext = path.extname(srcPath).toLowerCase();
-  if (!AUDIO_EXTS.includes(ext.slice(1))) return null;
   const id = crypto.randomUUID();
   const file = id + ext;
   fs.copyFileSync(srcPath, path.join(soundsDir, file));
@@ -212,6 +231,8 @@ function importFile(srcPath) {
     keyLabel: null,
     volume: 1,
     color: Math.floor(Math.random() * 6),
+    start: 0,
+    end: null,
   };
   activeProfile().sounds.push(sound);
   return sound;
@@ -279,23 +300,38 @@ ipcMain.handle('sounds:pick', async () => {
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Áudio', extensions: AUDIO_EXTS }],
   });
-  if (res.canceled) return publicState();
-  res.filePaths.forEach(importFile);
-  saveConfig();
-  return publicState();
+  return res.canceled ? [] : candidates(res.filePaths);
 });
 
-ipcMain.handle('sounds:import', (_e, paths) => {
-  paths.forEach(importFile);
+ipcMain.handle('sounds:check', (_e, paths) => candidates(paths));
+
+// bytes do áudio para a forma de onda: de um candidato ({ path }) ou de um som já importado ({ id })
+ipcMain.handle('sounds:read', (_e, src) => {
+  let file = src.path;
+  if (src.id) {
+    const s = activeProfile().sounds.find((x) => x.id === src.id);
+    if (!s) return null;
+    file = path.join(soundsDir, s.file);
+  }
+  if (!file || !isAudio(file)) return null;
+  return fs.promises.readFile(file).catch(() => null);
+});
+
+// só aqui o arquivo é copiado: cancelar o modal não deixa nada para trás
+ipcMain.handle('sounds:add', (_e, draft) => {
+  const s = importFile(draft.path);
+  if (!s) return publicState();
+  patchSound(s, draft);
+  releaseAccelerator(s.accelerator, s, [activeProfile()]);
   saveConfig();
+  registerShortcuts();
   return publicState();
 });
 
 ipcMain.handle('sounds:update', (_e, id, patch) => {
   const s = activeProfile().sounds.find((x) => x.id === id);
   if (!s) return publicState();
-  const allowed = ['name', 'accelerator', 'keyLabel', 'volume', 'color'];
-  for (const k of allowed) if (k in patch) s[k] = patch[k];
+  patchSound(s, patch);
   releaseAccelerator(patch.accelerator, s, [activeProfile()]);
   saveConfig();
   if ('accelerator' in patch) registerShortcuts();

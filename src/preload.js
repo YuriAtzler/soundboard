@@ -3,8 +3,10 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('state:get'),
   pickSounds: () => ipcRenderer.invoke('sounds:pick'),
-  importFiles: (files) =>
-    ipcRenderer.invoke('sounds:import', Array.from(files).map((f) => webUtils.getPathForFile(f))),
+  checkFiles: (files) =>
+    ipcRenderer.invoke('sounds:check', Array.from(files).map((f) => webUtils.getPathForFile(f))),
+  readAudio: (src) => ipcRenderer.invoke('sounds:read', src),
+  addSound: (draft) => ipcRenderer.invoke('sounds:add', draft),
   updateSound: (id, patch) => ipcRenderer.invoke('sounds:update', id, patch),
   removeSound: (id) => ipcRenderer.invoke('sounds:remove', id),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
