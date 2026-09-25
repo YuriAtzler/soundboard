@@ -10,7 +10,7 @@
 //   da Release.
 
 const { app, shell } = require('electron');
-const { spawn } = require('child_process');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const i18n = require('./i18n');
@@ -123,16 +123,25 @@ async function downloadPortable(version) {
 }
 
 // Troca o .exe portátil depois que o app fechar. O script vai para a pasta temporária porque o
-// PowerShell não lê de dentro do app.asar, e roda desanexado, para sobreviver ao fim do app.
+// PowerShell não lê de dentro do app.asar. Ele não pode ser filho do app: o Windows põe o portátil
+// num job que mata os processos que sobram quando o app fecha (um spawn desanexado morre junto).
+// Por isso quem cria o processo é o WMI (Win32_Process.Create), fora do job e na mesma sessão.
+// Devolve false se não deu para agendar a troca.
 function applyPortable(relaunch) {
-  if (!downloaded) return;
+  if (!downloaded) return false;
   const script = path.join(app.getPath('temp'), 'soundboard-portable-update.ps1');
   fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, 'portable-update.ps1')));
   const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
     '-File', script, '-New', downloaded, '-Exe', process.env.PORTABLE_EXECUTABLE_FILE];
   if (relaunch) args.push('-Relaunch');
-  spawn('powershell.exe', args, { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  // caminhos do Windows não têm aspas, então cercar cada argumento com elas basta
+  const commandLine = ['powershell.exe', ...args].map((a) => (a.startsWith('-') ? a : `"${a}"`)).join(' ');
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    '$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $env:SB_UPDATE_CMD }; exit $r.ReturnValue'],
+  { windowsHide: true, timeout: 20_000, env: { ...process.env, SB_UPDATE_CMD: commandLine } });
+  if (res.status !== 0) return false;
   downloaded = null;
+  return true;
 }
 
 // ao sair com a versão nova já baixada, instala sem abrir de novo (como o autoInstallOnAppQuit)
@@ -160,10 +169,13 @@ function install(beforeQuit) {
     return;
   }
   if (status.mode === 'portable' && status.state === 'ready') {
-    beforeQuit();
-    applyPortable(true);
-    app.quit();
-    return;
+    if (applyPortable(true)) {
+      beforeQuit();
+      app.quit();
+      return;
+    }
+    // sem como trocar o .exe: volta ao jeito manual, abrindo o download
+    set({ mode: 'manual', state: 'available' });
   }
   if (status.state !== 'available') return;
   const url = status.mode === 'dev'
