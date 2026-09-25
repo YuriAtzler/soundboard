@@ -7,7 +7,7 @@
   <title>Soundboard</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body data-view="sounds">
   <div class="app">
     <aside id="sidebar" class="sidebar">
       <div class="brand">
@@ -27,56 +27,12 @@
         <div id="tabs" class="tabs"></div>
       </section>
 
-      <section class="side-section settings">
-        <div class="side-head"><span>Configurações</span></div>
-
-        <div class="field">
-          <span class="field-label">Volume geral</span>
-          <label class="master" title="Volume geral">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-            <input id="master" type="range" min="0" max="1" step="0.01" />
-          </label>
-        </div>
-
-        <div class="field inline">
-          <span class="field-label">Tecla de parar tudo</span>
-          <button id="stopKey" class="keycap small" title="Tecla para parar todos os sons (funciona como atalho global)"></button>
-        </div>
-
-        <label class="field inline switch" title="Um som novo corta o que estiver tocando">
-          <span class="field-label">Um som por vez</span>
-          <input id="exclusive" type="checkbox" />
-          <span class="track"><span class="thumb"></span></span>
-        </label>
-
-        <label class="field" title="Onde os sons tocam (fone, caixa ou cabo virtual)">
-          <span class="field-label">Saída de áudio</span>
-          <select id="output" class="select"></select>
-        </label>
-
-        <label id="keyboardWrap" class="field" title="Só as teclas deste teclado disparam os sons" hidden>
-          <span class="field-label">Teclado dos sons</span>
-          <select id="keyboard" class="select"></select>
-        </label>
-
-        <div class="field">
-          <span class="field-label">Tema</span>
-          <div id="theme" class="theme" role="group" aria-label="Tema">
-            <button data-theme="system" title="Seguir o sistema">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-              Sistema
-            </button>
-            <button data-theme="light" title="Tema claro">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-              Claro
-            </button>
-            <button data-theme="dark" title="Tema escuro">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-              Escuro
-            </button>
-          </div>
-        </div>
-      </section>
+      <nav class="side-foot">
+        <button id="openSettings" class="side-item">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Configurações
+        </button>
+      </nav>
     </aside>
     <div id="scrim" class="scrim"></div>
 
@@ -132,6 +88,91 @@
           <p id="noResults" class="no-results" hidden></p>
         </section>
       </main>
+      <section id="settingsView" class="settings-view">
+        <header class="topbar">
+          <button class="menu" title="Perfis e configurações">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <button id="settingsBack" class="back" title="Voltar aos sons (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="title"><h2>Configurações</h2></div>
+        </header>
+
+        <div class="settings-body">
+          <h3 class="group-title">Áudio</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <strong>Saída de áudio</strong>
+              <p>Onde os sons tocam: fone, caixa de som ou um cabo virtual (como o VB-Cable) para mandar os sons ao Discord ou a uma live.</p>
+            </div>
+            <div class="setting-control"><select id="output" class="select"></select></div>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <strong>Volume geral</strong>
+              <p>Multiplica o volume de todos os sons. O volume de cada som continua ajustável na lista.</p>
+            </div>
+            <div class="setting-control">
+              <label class="master" title="Volume geral">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+                <input id="master" type="range" min="0" max="1" step="0.01" />
+                <span id="masterValue" class="vol-value"></span>
+              </label>
+            </div>
+          </div>
+          <label class="setting switch">
+            <div class="setting-text">
+              <strong>Um som por vez</strong>
+              <p>Tocar um som corta o que estiver tocando. Desligado, os sons se sobrepõem.</p>
+            </div>
+            <div class="setting-control">
+              <input id="exclusive" type="checkbox" />
+              <span class="track"><span class="thumb"></span></span>
+            </div>
+          </label>
+
+          <h3 class="group-title">Teclas</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <strong>Parar tudo</strong>
+              <p>Para todos os sons de qualquer lugar, mesmo com o app em segundo plano e em qualquer perfil. Clique na tecla para trocar; <kbd>Backspace</kbd> remove.</p>
+            </div>
+            <div class="setting-control"><button id="stopKey" class="keycap"></button></div>
+          </div>
+          <div id="keyboardWrap" class="setting" hidden>
+            <div class="setting-text">
+              <strong>Teclado dos sons</strong>
+              <p>Escolha um teclado (por exemplo, um numérico USB) para só ele disparar os sons. As mesmas teclas nos outros teclados ficam livres; Ctrl, Alt e Shift valem de qualquer um.</p>
+            </div>
+            <div class="setting-control"><select id="keyboard" class="select"></select></div>
+          </div>
+
+          <h3 class="group-title">Aparência</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <strong>Tema</strong>
+              <p>Claro, escuro ou igual ao do sistema, trocando sozinho quando o sistema troca.</p>
+            </div>
+            <div class="setting-control">
+              <div id="theme" class="theme" role="group" aria-label="Tema">
+                <button data-theme="system" title="Seguir o sistema">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                  Sistema
+                </button>
+                <button data-theme="light" title="Tema claro">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                  Claro
+                </button>
+                <button data-theme="dark" title="Tema escuro">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                  Escuro
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 

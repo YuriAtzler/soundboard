@@ -102,7 +102,6 @@ svg {
 
 .side-section { padding: 8px 12px 12px; }
 .profiles-section { flex: 1; min-height: 140px; }
-.settings { border-top: 1px solid var(--border); padding-top: 12px; }
 .side-head {
   display: flex; align-items: center; justify-content: space-between;
   height: 28px; padding: 0 8px; margin-bottom: 4px;
@@ -155,7 +154,25 @@ svg {
 .tab-x:hover { background: var(--surface); color: var(--danger); }
 .tabs.single .tab-x { display: none; }
 
-/* configurações */
+/* pé da sidebar */
+.side-foot { padding: 10px 12px 14px; border-top: 1px solid var(--border); }
+.side-item {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  height: 38px; padding: 0 10px; border-radius: 10px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; font-weight: 600; text-align: left;
+  transition: background .15s, color .15s;
+}
+.side-item svg { width: 18px; height: 18px; }
+.side-item:hover { background: var(--surface-2); color: var(--text); }
+[data-view="settings"] .side-item#openSettings {
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text);
+}
+/* na tela de configurações nenhum perfil aparece como aberto */
+[data-view="settings"] .tab.active { background: transparent; color: var(--muted); }
+[data-view="settings"] .tab.active:hover { background: var(--surface-2); color: var(--text); }
+
+/* campos (modal) */
 .field { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
 .field.inline { flex-direction: row; align-items: center; justify-content: space-between; }
 .field[hidden] { display: none; }
@@ -163,6 +180,7 @@ svg {
 .master { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .master svg { flex: none; width: 16px; height: 16px; }
 .master input { flex: 1; min-width: 0; }
+.master .vol-value { width: 38px; }
 .select {
   width: 100%; height: 34px; padding: 0 8px;
   border-radius: 8px; border: 1px solid var(--border);
@@ -172,6 +190,8 @@ svg {
 .select:hover { border-color: var(--accent); }
 
 .switch { cursor: pointer; }
+.setting-control .select { width: 240px; max-width: 100%; }
+.setting-control .master { width: 240px; max-width: 100%; }
 .switch input { display: none; }
 .track {
   flex: none; position: relative; width: 36px; height: 20px; border-radius: 99px;
@@ -203,6 +223,35 @@ svg {
   background: var(--surface); color: var(--text);
   box-shadow: 0 1px 3px var(--shadow);
 }
+
+/* ---------- tela de configurações ---------- */
+body:not([data-view="settings"]) .settings-view,
+[data-view="settings"] .content > .topbar,
+[data-view="settings"] main { display: none; }
+.back {
+  flex: none; display: grid; place-items: center;
+  width: 36px; height: 36px; margin-right: -4px; border-radius: 10px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.back:hover { background: var(--surface-2); color: var(--text); }
+.settings-body { max-width: 760px; margin: 0 auto; padding: 8px 24px 40px; }
+.group-title {
+  margin: 24px 4px 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.setting {
+  display: flex; align-items: center; gap: 24px;
+  margin-bottom: 10px; padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+}
+.setting[hidden] { display: none; }
+.setting-text { flex: 1; min-width: 0; }
+.setting-text strong { display: block; font-size: 15px; margin-bottom: 3px; }
+.setting-text p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.setting-control { flex: none; display: flex; align-items: center; justify-content: flex-end; }
+.setting .theme { width: 280px; }
 
 /* ---------- topo da área de sons ---------- */
 .topbar {
@@ -630,4 +679,9 @@ kbd {
   .bulk-vol input { width: 80px; }
   .bulk { gap: 8px; }
   .btn .label { display: none; }
+  .settings-body { padding: 4px 12px 32px; }
+  .setting { flex-direction: column; align-items: stretch; gap: 12px; }
+  .setting.switch { flex-direction: row; align-items: center; }
+  .setting-control { justify-content: flex-start; }
+  .setting-control .select, .setting-control .master, .setting .theme { width: 100%; }
 }

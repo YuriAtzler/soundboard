@@ -203,8 +203,9 @@ function applyState(next) {
   renderKeyboard();
   $('#master').value = state.masterVolume;
   paintRange($('#master'));
+  showMaster();
   const stopKey = $('#stopKey');
-  stopKey.textContent = state.stopKeyLabel || 'Tecla';
+  stopKey.textContent = state.stopKeyLabel || 'Definir tecla';
   stopKey.classList.toggle('unbound', !state.stopKeyLabel);
   markKey(stopKey, state.stopAccelerator, state.stopKeyLabel, 'Tecla para parar todos os sons (funciona como atalho global)');
 
@@ -501,12 +502,25 @@ async function switchProfile(id) {
 
 // gaveta da sidebar (janela estreita)
 const setNav = (open) => document.body.classList.toggle('nav-open', open);
-$('#menu').addEventListener('click', () => setNav(true));
+for (const btn of document.querySelectorAll('.menu')) btn.addEventListener('click', () => setNav(true));
+
+// tela principal: 'sounds' (tabela) ou 'settings'
+const settingsOpen = () => document.body.dataset.view === 'settings';
+function setView(view) {
+  document.body.dataset.view = view;
+  setNav(false);
+  $('.content').scrollTop = 0;
+}
+$('#openSettings').addEventListener('click', () => setView(settingsOpen() ? 'sounds' : 'settings'));
+$('#settingsBack').addEventListener('click', () => setView('sounds'));
 $('#scrim').addEventListener('click', () => setNav(false));
 // trocar de perfil fecha a gaveta; clicar no perfil já aberto não, para dar o duplo clique de renomear
 tabsEl.addEventListener('click', (e) => {
   const tab = e.target.closest('.tab');
-  if (tab && !tab.classList.contains('active') && !e.target.closest('button')) setNav(false);
+  if (!tab || e.target.closest('button')) return;
+  // clicar num perfil sai das configurações
+  if (settingsOpen()) setView('sounds');
+  else if (!tab.classList.contains('active')) setNav(false);
 });
 
 $('#addProfile').addEventListener('click', async () => {
@@ -795,7 +809,7 @@ function moveCursor(to) {
 
 // setas, Home/End, Espaço, Enter/F2 e Delete na tabela; true se a tecla foi tratada
 function navKey(e) {
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || !state.sounds.length) return false;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || !state.sounds.length || settingsOpen()) return false;
   const t = e.target;
   // em cima de um controle, a tecla é dele (slider anda com setas, botão aciona com Espaço/Enter)
   const onControl = t instanceof HTMLButtonElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement;
@@ -1188,11 +1202,16 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (settingsOpen() && e.code === 'Escape' && !(e.target instanceof HTMLSelectElement)) {
+    setView('sounds');
+    return;
+  }
   // setas repetem (segurar para descer a lista); o resto só na primeira batida
   if (e.repeat && !/^Arrow(Up|Down)$/.test(e.code)) return;
   // Ctrl/Cmd+F foca a busca, a não ser que a combinação esteja vinculada a algo
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && !e.altKey && !e.shiftKey && !isBound(eventToShortcut(e).accelerator)) {
     e.preventDefault();
+    setView('sounds');
     search.focus();
     search.select();
     return;
@@ -1237,8 +1256,13 @@ $('#exclusive').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ exclusive: e.target.checked }));
 });
 
+function showMaster() {
+  $('#masterValue').textContent = `${Math.round(state.masterVolume * 100)}%`;
+}
+
 $('#master').addEventListener('input', (e) => {
   state.masterVolume = Number(e.target.value);
+  showMaster();
   for (const s of state.sounds) {
     const audio = players.get(s.id);
     if (audio) audio.volume = effectiveVolume(s);
