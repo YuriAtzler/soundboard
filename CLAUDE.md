@@ -5,19 +5,25 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 ## Estrutura
 
 - `src/main.js`: processo principal. Janela, persistência, IPC e atalhos globais (`globalShortcut`).
+- `src/keyboard.js` + `src/keyboard-helper.ps1`: (só Windows) descobre de qual teclado veio cada tecla. O `.ps1` compila um C# com `Add-Type` que escuta o Raw Input (`RIDEV_INPUTSINK`), e o `keyboard.js` converte scancode em `KeyboardEvent.code`. O script é copiado para a pasta de dados antes de rodar, porque o PowerShell não lê de dentro do `app.asar`.
 - `src/preload.js`: expõe `window.api` via `contextBridge` (contextIsolation ligado, nodeIntegration desligado).
 - `src/renderer/`: UI em HTML/CSS/JS puro (`index.html`, `styles.css`, `renderer.js`). No renderer, `window.api` é referenciado como `sb`; não declare `const api`, porque colide com o global exposto.
 
 ## Dados
 
 - Ficam em `app.getPath('userData')` (no Windows, `%APPDATA%\Soundboard`).
-- `soundboard.json` guarda `{ globalHotkeys, masterVolume, stopAccelerator, stopKeyLabel, sounds[] }` (`stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global). Cada som tem `id, file, name, accelerator, keyLabel, volume, color`.
+- `soundboard.json` guarda `{ globalHotkeys, masterVolume, exclusive, outputDevice, stopAccelerator, stopKeyLabel, activeProfile, profiles[] }`. `stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global. `exclusive` liga o "um som por vez". `inputDevice` (`{ id, label }` ou `null`) é o teclado escolhido; o `id` é o `VID_xxxx&PID_xxxx(&MI_xx)` do caminho do dispositivo. `outputDevice` é o `deviceId` da saída de áudio (`'default'` = padrão do sistema), aplicado com `setSinkId`.
+- Cada perfil tem `id, name, accelerator, keyLabel, sounds[]`, e cada som tem `id, file, name, accelerator, keyLabel, volume, color`. O `publicState()` manda ao renderer só os sons do perfil ativo, em `sounds`.
+- Configs antigas, com `sounds[]` na raiz, são migradas para um perfil "Principal" no `loadConfig`.
 - Os áudios importados são **copiados** para `sounds/<uuid>.<ext>`, então o original pode ser apagado.
 
 ## Teclas
 
 - O renderer converte `KeyboardEvent.code` em accelerator do Electron (`eventToShortcut`), por exemplo `Control+1`, `F1`, `num5`. O mesmo accelerator serve tanto para o atalho local quanto para o global.
-- Uma tecla pertence a um só som (ou à tecla de parar tudo); ao reatribuir, o main remove a tecla do dono anterior.
+- Uma tecla pertence a um só dono (`releaseAccelerator` no main). As teclas de som valem só dentro do próprio perfil, então dois perfis podem usar a mesma tecla. Já "parar tudo" e as teclas de troca de perfil valem sempre, e por isso tiram a tecla dos sons de todos os perfis.
+- Durante a captura de tecla, o renderer chama `setCapturing(true)` e o main desliga os atalhos globais. Sem isso o sistema "engole" uma tecla já registrada e ela não chega à janela.
+- No Windows, com o NumLock desligado, o teclado numérico manda End, setas etc., e o atalho global `numN` não dispara. Nesse caso o keydown local trata a tecla (`numpadWithoutNumLock`).
+- Com um teclado escolhido (`deviceMode()` no main), o `globalShortcut` fica desligado: o main manda `device-key` só para as teclas desse teclado, e o renderer ignora os keydowns locais vinculados. Os modificadores valem vindos de qualquer teclado (o numpad não tem Ctrl). O Raw Input só observa, então a tecla continua chegando ao app em foco. Se o auxiliar falhar, `keyboardError` é preenchido e o app volta ao `globalShortcut`.
 - Com atalhos globais ligados, o main dispara `play` via IPC e o keydown local é ignorado, para não tocar duas vezes. A exceção são os accelerators em `failedHotkeys`, que o sistema recusou; esses continuam funcionando só com a janela em foco.
 
 ## Comandos

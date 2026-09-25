@@ -40,6 +40,26 @@
         Adicionar áudio
       </button>
     </div>
+
+    <nav class="profilebar">
+      <div id="tabs" class="tabs"></div>
+      <button id="addProfile" class="tab-add" title="Novo perfil">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <label class="switch exclusive" title="Um som novo corta o que estiver tocando">
+        <input id="exclusive" type="checkbox" />
+        <span class="track"><span class="thumb"></span></span>
+        <span>Um som por vez</span>
+      </label>
+      <label id="keyboardWrap" class="output" title="Só as teclas deste teclado disparam os sons" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+        <select id="keyboard"></select>
+      </label>
+      <label class="output" title="Onde os sons tocam (fone, caixa ou cabo virtual)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/></svg>
+        <select id="output"></select>
+      </label>
+    </nav>
   </header>
 
   <main>
@@ -62,12 +82,22 @@
     <div class="modal-card">
       <div class="keycap big pulse" id="captureKey">?</div>
       <h3 id="captureTitle">Pressione uma tecla</h3>
-      <p>Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/>
+      <p id="captureHint">Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/>
         <kbd>Esc</kbd> cancela · <kbd>Backspace</kbd> remove o vínculo</p>
     </div>
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <template id="tabTpl">
+    <div class="tab" title="Clique para abrir · duplo clique no nome para renomear">
+      <input class="tab-name" readonly spellcheck="false" />
+      <button class="keycap tiny" title="Tecla para abrir este perfil (vale em qualquer perfil)"></button>
+      <button class="tab-x" title="Apagar perfil">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+  </template>
 
   <template id="cardTpl">
     <article class="card">
