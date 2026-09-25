@@ -837,6 +837,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   quitting = true;
+  updater.onQuit();
 });
 
 app.on('will-quit', () => {

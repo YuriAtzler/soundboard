@@ -27,8 +27,9 @@ O app não tem assinatura digital paga, então o sistema avisa na primeira vez:
 
 O app procura versões novas sozinho (ao abrir e a cada 6 horas) e avisa no pé da barra lateral.
 
-- **Windows (instalador)** e **Linux (AppImage)**: a versão nova é baixada em segundo plano; clique em **Reiniciar** e pronto.
-- **macOS**, **Windows portátil** e **.deb**: o aviso tem um botão **Baixar**, que já abre o arquivo certo; instale por cima.
+- **Windows (instalador e portátil)** e **Linux (AppImage)**: a versão nova é baixada em segundo plano; clique em **Reiniciar** e pronto.
+  (O portátil troca o próprio `.exe`; se ele estiver numa pasta sem permissão de escrita, cai no botão **Baixar**.)
+- **macOS** e **.deb**: o aviso tem um botão **Baixar**, que já abre o arquivo certo; instale por cima.
   (No Mac, atualizar sozinho exigiria a assinatura paga da Apple.)
 
 Seus sons, perfis e configurações continuam depois de atualizar. Quem está na 2.0.0 precisa baixar a próxima versão à mão uma vez;
