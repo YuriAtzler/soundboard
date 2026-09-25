@@ -23,12 +23,18 @@ O app não tem assinatura digital paga, então o sistema avisa na primeira vez:
   "está danificado", rode no Terminal `xattr -cr /Applications/Soundboard.app` e abra de novo.
 - **Linux (AppImage)**: dê permissão de execução (`chmod +x Soundboard-linux.AppImage`) e abra.
 
-## Rodar do código
+## Atualizar
 
-```bash
-npm install
-npm start
-```
+O app procura versões novas sozinho (ao abrir e a cada 6 horas) e avisa no pé da barra lateral.
+
+- **Windows (instalador)** e **Linux (AppImage)**: a versão nova é baixada em segundo plano; clique em **Reiniciar** e pronto.
+- **macOS**, **Windows portátil** e **.deb**: o aviso tem um botão **Baixar**, que já abre o arquivo certo; instale por cima.
+  (No Mac, atualizar sozinho exigiria a assinatura paga da Apple.)
+
+Seus sons, perfis e configurações continuam depois de atualizar. Quem está na 2.0.0 precisa baixar a próxima versão à mão uma vez;
+dali em diante o aviso aparece no próprio app. Também dá para procurar em **Configurações → Atualizações**.
+
+## Como usar
 
 - **Adicionar áudio**: botão no topo ou arraste arquivos (mp3, wav, ogg, m4a, aac, flac, webm, opus). Cada arquivo abre
   uma janela para escolher o nome, o trecho que toca (arraste as alças na forma de onda e use **Ouvir trecho**) e a
@@ -40,7 +46,9 @@ npm start
   Se a tecla já era de outro som, ela passa para o novo, e o outro fica "Sem tecla".
 - **Tocar**: aperte a tecla (apertar de novo para) ou clique no play. `Esc` para tudo.
 - **Segundo plano**: as teclas funcionam mesmo com o app minimizado ou em outra janela. Fechar a janela só a esconde:
-  o app continua na bandeja do sistema (Windows/Linux, perto do relógio), de onde se abre de novo ou se sai. No Mac, reabra pelo Dock e saia com Cmd+Q.
+  o app continua no ícone perto do relógio (Windows/Linux; no Windows ele pode estar dentro da setinha **^**), cujo menu
+  troca de perfil, para todos os sons, abre a janela ou sai. No Mac, o mesmo menu fica no clique direito do ícone no Dock,
+  e sai-se com Cmd+Q. Se preferir que o ✕ feche o app, mude em **Configurações → Ao fechar a janela**.
   Use teclas como F1–F12 ou combinações (ex.: `Ctrl+1`, `Ctrl+Num 1`), porque o atalho global "rouba" a tecla dos outros apps.
   No Windows, deixe o NumLock ligado para usar o teclado numérico como atalho global. Uma tecla com ⚠ só funciona com o
   app em foco (passe o mouse para ver o motivo).
@@ -48,16 +56,33 @@ npm start
 - **Vários de uma vez**: marque os sons (Shift+clique marca um intervalo) para mudar o volume de todos ou removê-los.
 - **Teclado na lista**: ↑/↓ escolhem o som, `Espaço` toca, `Enter` ou `F2` edita e `Delete` remove.
   Teclas vinculadas a sons têm prioridade.
-- **Perfis** (na barra lateral): cada perfil é um conjunto separado de sons e teclas (ex.: "Live", "Jogo").
-  `+` cria um perfil, um duplo clique no nome renomeia, e a tecla do perfil troca para ele de qualquer lugar.
-- **Configurações** (na barra lateral, embaixo dos perfis):
-  - **Volume geral** e **Tecla de parar tudo** (vale como atalho global, em qualquer perfil).
-  - **Um som por vez**: tocar um som corta o que estiver tocando.
-  - **Saída de áudio**: onde os sons tocam (fone, caixa ou um cabo virtual, como o VB-Cable, para mandar ao Discord).
-  - **Teclado dos sons** (só Windows): escolha "Identificar teclado…" e aperte uma tecla no teclado que vai disparar os sons, por exemplo um teclado numérico USB. Daí em diante só ele dispara os sons, e as mesmas teclas nos outros teclados ficam livres. Ctrl/Alt/Shift podem vir de qualquer teclado. A tecla também chega ao app em foco, então prefira teclas que não façam nada nele.
-  - **Tema**: Sistema, Claro ou Escuro.
+- **Perfis** (na barra lateral): cada perfil é um conjunto separado de sons e teclas (ex.: "Live", "Jogo"), e a tecla do
+  perfil troca para ele de qualquer lugar. O **⋯** (ou clique direito) de cada perfil renomeia, define a tecla, exporta ou
+  apaga. O **+** cria um perfil novo ou importa um.
+- **Levar perfis para outro computador**: **Exportar…** gera um arquivo `.soundboard` com os sons, os trechos, os volumes
+  e as teclas. No outro computador, use **+ → Importar perfil…** ou arraste o arquivo para a janela. Se o nome ou a tecla
+  já existirem, o perfil entra como "Nome (2)" e as teclas repetidas ficam de fora.
+- **Tema**: Sistema, Claro ou Escuro, no pé da barra lateral.
+- **Configurações** (⚙ no pé da barra lateral), cada uma com a explicação do que faz:
+  - **Áudio**: saída de áudio (fone, caixa ou um cabo virtual, como o VB-Cable, para mandar ao Discord), volume geral e
+    "um som por vez".
+  - **Teclas**: a tecla de parar tudo (vale como atalho global, em qualquer perfil) e, no Windows, o **teclado dos sons**:
+    escolha "Identificar teclado…" e aperte uma tecla no teclado que vai disparar os sons, por exemplo um teclado numérico USB.
+    Daí em diante só ele dispara os sons, e as mesmas teclas nos outros teclados ficam livres. Ctrl/Alt/Shift podem vir de
+    qualquer teclado. A tecla também chega ao app em foco, então prefira teclas que não façam nada nele.
+  - **Segundo plano**: o que o ✕ faz e **Iniciar com o sistema** (o app abre escondido, com as teclas já funcionando).
+  - **Backup**: **Exportar tudo** guarda todos os perfis, sons e configurações num `.soundboard`; **Restaurar** junta os
+    perfis do backup aos atuais ou substitui tudo. A saída de áudio e o teclado escolhido não vão no backup.
+  - **Atualizações** e **Aparência**.
 
 Os áudios são copiados para a pasta de dados do app, então o arquivo original pode ser movido ou apagado.
+
+## Rodar do código
+
+```bash
+npm install
+npm start
+```
 
 ## Publicar uma versão
 
@@ -69,6 +94,7 @@ git push origin v1.1.0
 ```
 
 A versão do app vem da tag. Em alguns minutos os arquivos aparecem em Releases e os links acima passam a baixar a versão nova.
+Junto vão os `latest*.yml` e `.blockmap`, que o app usa para se atualizar sozinho; não apague esses arquivos da Release.
 
 ## Gerar instalador localmente
 
