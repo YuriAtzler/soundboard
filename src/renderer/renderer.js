@@ -30,6 +30,9 @@ function applyI18n(root) {
   for (const el of root.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
 }
 
+// "a, b e c" / "a, b and c", no idioma atual
+const joinList = (items) => new Intl.ListFormat(language, { type: 'conjunction' }).format(items);
+
 function applyLanguage() {
   document.documentElement.lang = language;
   applyI18n(document);
@@ -113,10 +116,10 @@ window.addEventListener('mousedown', trackNumLock, true);
 function keyProblem(accelerator, keyLabel) {
   if (!accelerator) return null;
   if (state.failedHotkeys.includes(accelerator)) {
-    return `O sistema não deixou usar ${keyLabel} como atalho global (outro programa já usa). Ela só funciona com o Soundboard em foco.`;
+    return t('keyWarn.failed', { key: keyLabel });
   }
   if (numLockOff && !state.deviceMode && /^num\d$/.test(accelerator)) {
-    return `O NumLock está desligado, então ${keyLabel} só funciona com o Soundboard em foco. Ligue o NumLock.`;
+    return t('keyWarn.numlock', { key: keyLabel });
   }
   return null;
 }
@@ -143,7 +146,7 @@ async function applySink(audio) {
   try {
     await audio.setSinkId(sinkId());
   } catch {
-    toast('Saída de áudio indisponível, tocando na saída padrão');
+    toast(t('toast.outputMissing'));
     await audio.setSinkId('').catch(() => {});
   }
 }
@@ -192,7 +195,7 @@ async function play(id) {
       // o timeupdate só vem ~4x por segundo, então o fim do trecho é por timer
       if (sound.end) stopTimers.set(id, setTimeout(() => audio.pause(), (sound.end - audio.currentTime) * 1000));
     })
-    .catch(() => toast('Não foi possível tocar este arquivo'));
+    .catch(() => toast(t('toast.cantPlay')));
 
   const row = rows.get(id);
   if (row) {
@@ -228,13 +231,15 @@ function applyState(next) {
   applyTheme();
   $('#exclusive').checked = state.exclusive;
   $('#closeToTray').value = state.closeToTray === false ? 'quit' : 'tray';
+  // onde o app fica quando a janela fecha muda de sistema para sistema
+  $('#closeHint').textContent = t(isMac ? 'settings.close.descMac' : 'settings.close.desc');
   $('#language').value = state.language || 'system';
   $('#openAtLogin').checked = !!state.openAtLogin;
   $('#openAtLogin').disabled = !state.canOpenAtLogin;
   $('#loginWrap').classList.toggle('disabled', !state.canOpenAtLogin);
   $('#loginHint').textContent = state.canOpenAtLogin
-    ? 'Abre o Soundboard escondido na bandeja quando você entra no computador, com as teclas já funcionando.'
-    : 'Só funciona no app instalado (no npm start, o sistema abriria o Electron sem o Soundboard).';
+    ? t('settings.login.desc')
+    : t('settings.login.dev');
   renderProfiles();
   renderOutputs();
   renderKeyboard();
@@ -242,9 +247,9 @@ function applyState(next) {
   paintRange($('#master'));
   showMaster();
   const stopKey = $('#stopKey');
-  stopKey.textContent = state.stopKeyLabel || 'Definir tecla';
+  stopKey.textContent = state.stopKeyLabel || t('key.set');
   stopKey.classList.toggle('unbound', !state.stopKeyLabel);
-  markKey(stopKey, state.stopAccelerator, state.stopKeyLabel, 'Tecla para parar todos os sons (funciona como atalho global)');
+  markKey(stopKey, state.stopAccelerator, state.stopKeyLabel, t('stopKey.title'));
 
   const ids = new Set(state.sounds.map((s) => s.id));
   for (const [id, el] of rows) {
@@ -301,7 +306,7 @@ function renderList() {
   }
   const noResults = $('#noResults');
   noResults.hidden = shown > 0 || !state.sounds.length;
-  noResults.textContent = `Nenhum som com "${search.value.trim()}"`;
+  noResults.textContent = t('list.noResults', { query: search.value.trim() });
   for (const btn of document.querySelectorAll('.sort')) {
     const active = btn.dataset.sort === state.sort.by;
     btn.classList.toggle('asc', active && state.sort.dir === 'asc');
@@ -335,7 +340,7 @@ function renderSelection() {
   list.classList.toggle('selecting', selected.size > 0);
   $('#bulk').hidden = !selected.size;
   if (!selected.size) return;
-  $('#bulkCount').textContent = selected.size === 1 ? '1 selecionado' : `${selected.size} selecionados`;
+  $('#bulkCount').textContent = t('bulk.count', { n: selected.size });
   if (document.activeElement !== bulkVol) {
     const volumes = state.sounds.filter((s) => selected.has(s.id)).map((s) => s.volume);
     bulkVol.value = volumes.reduce((a, b) => a + b, 0) / volumes.length;
@@ -387,9 +392,9 @@ bulkVol.addEventListener('change', async () => {
 
 $('#bulkRemove').addEventListener('click', async () => {
   const n = selected.size;
-  if (!confirm(n === 1 ? 'Remover o som selecionado?' : `Remover os ${n} sons selecionados?`)) return;
+  if (!confirm(t('bulk.confirm', { n }))) return;
   applyState(await sb.removeSounds([...selected]));
-  toast(n === 1 ? 'Som removido' : `${n} sons removidos`);
+  toast(t('bulk.removed', { n }));
 });
 $('#bulkClear').addEventListener('click', clearSelection);
 
@@ -443,12 +448,12 @@ function buildRow(id) {
 function updateRow(row, sound) {
   row.style.setProperty('--c', `var(--c${sound.color % 6})`);
   const key = row.querySelector('.keycap');
-  key.textContent = sound.keyLabel || 'Sem tecla';
+  key.textContent = sound.keyLabel || t('key.none');
   key.classList.toggle('unbound', !sound.keyLabel);
-  const problem = markKey(key, sound.accelerator, sound.keyLabel, 'Clique para trocar a tecla');
+  const problem = markKey(key, sound.accelerator, sound.keyLabel, t('row.key.title'));
   const warn = row.querySelector('.key-warn');
   warn.hidden = !problem && !!sound.keyLabel;
-  warn.title = problem || 'Este som não tem tecla: só toca pelo botão ▶. Clique em "Sem tecla" para vincular uma.';
+  warn.title = problem || t('row.noKey');
   row.querySelector('.name').textContent = sound.name;
   const vol = row.querySelector('.vol');
   vol.value = sound.volume;
@@ -482,14 +487,14 @@ function renderProfiles() {
     if (document.activeElement !== name) name.value = profile.name;
     tab.querySelector('.tab-count').textContent = profile.count;
     const key = tab.querySelector('.keycap');
-    key.textContent = profile.keyLabel || '+tecla';
+    key.textContent = profile.keyLabel || t('tab.addKey');
     key.classList.toggle('unbound', !profile.keyLabel);
-    markKey(key, profile.accelerator, profile.keyLabel, 'Tecla para abrir este perfil (vale em qualquer perfil)');
+    markKey(key, profile.accelerator, profile.keyLabel, t('tab.key.title'));
   }
   tabsEl.classList.toggle('single', state.profiles.length === 1);
   const active = state.profiles.find((p) => p.id === state.activeProfile);
   $('#profileName').textContent = active.name;
-  $('#profileCount').textContent = active.count === 1 ? '1 som' : `${active.count} sons`;
+  $('#profileCount').textContent = t('profile.count', { n: active.count });
   tabs.get(state.activeProfile)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -508,7 +513,7 @@ function buildTab(id) {
   name.addEventListener('blur', async () => {
     if (name.readOnly) return;
     name.readOnly = true;
-    const value = name.value.trim() || 'Sem nome';
+    const value = name.value.trim() || t('name.untitled');
     applyState(await sb.updateProfile(id, { name: value }));
   });
 
@@ -531,24 +536,24 @@ function buildTab(id) {
 function profileMenu(id, at) {
   const profile = state.profiles.find((p) => p.id === id);
   openPopover([
-    { label: 'Renomear', icon: 'rename', action: () => renameProfile(id) },
-    { label: profile.keyLabel ? `Trocar tecla (${profile.keyLabel})` : 'Definir tecla', icon: 'key', action: () => captureKey(profileTarget(id)) },
-    { label: 'Exportar…', icon: 'export', action: () => exportProfile(id) },
+    { label: t('menu.rename'), icon: 'rename', action: () => renameProfile(id) },
+    { label: profile.keyLabel ? t('menu.changeKey', { key: profile.keyLabel }) : t('key.set'), icon: 'key', action: () => captureKey(profileTarget(id)) },
+    { label: t('menu.export'), icon: 'export', action: () => exportProfile(id) },
     'sep',
-    { label: 'Apagar perfil', icon: 'trash', danger: true, disabled: state.profiles.length === 1, action: () => deleteProfile(id) },
+    { label: t('menu.deleteProfile'), icon: 'trash', danger: true, disabled: state.profiles.length === 1, action: () => deleteProfile(id) },
   ], at, tabs.get(id));
 }
 
 async function deleteProfile(id) {
   const profile = state.profiles.find((p) => p.id === id);
-  if (profile.count && !confirm(`Apagar o perfil "${profile.name}" e os ${profile.count} sons dele?`)) return;
+  if (profile.count && !confirm(t('profile.confirmDelete', { name: profile.name, n: profile.count }))) return;
   applyState(await sb.removeProfile(id));
 }
 
 async function exportProfile(id) {
   const res = await sb.exportProfile(id);
-  if (res.ok) toast(`Perfil exportado em ${res.file}`);
-  else if (res.error) toast(`Não foi possível exportar: ${res.error}`);
+  if (res.ok) toast(t('toast.exported', { file: res.file }));
+  else if (res.error) toast(t('toast.exportFailed', { error: res.error }));
 }
 
 // importa um .soundboard (escolhido no diálogo ou solto na janela) e conta o que ficou de fora
@@ -562,10 +567,10 @@ async function importProfiles(request) {
   const names = res.imported || [];
   if (!names.length) return;
   setView('sounds');
-  let msg = names.length === 1 ? `Perfil "${names[0]}" importado` : `${names.length} perfis importados`;
-  if (res.replaced) msg = `Backup restaurado: ${names.length === 1 ? '1 perfil' : `${names.length} perfis`}`;
-  if (res.missing) msg += ` · ${res.missing} ${res.missing === 1 ? 'áudio não veio' : 'áudios não vieram'} no arquivo`;
-  if (res.droppedKeys) msg += ` · ${res.droppedKeys} ${res.droppedKeys === 1 ? 'tecla já tinha dono e ficou' : 'teclas já tinham dono e ficaram'} de fora`;
+  let msg = names.length === 1 ? t('import.one', { name: names[0] }) : t('import.many', { n: names.length });
+  if (res.replaced) msg = t('import.restored', { n: names.length });
+  if (res.missing) msg += ` · ${t('import.missing', { n: res.missing })}`;
+  if (res.droppedKeys) msg += ` · ${t('import.droppedKeys', { n: res.droppedKeys })}`;
   toast(msg);
 }
 
@@ -608,15 +613,15 @@ $('#addProfile').addEventListener('click', (e) => {
   const btn = e.currentTarget;
   openPopover([
     {
-      label: 'Novo perfil',
+      label: t('menu.newProfile'),
       icon: 'plus',
       action: async () => {
-        applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
+        applyState(await sb.createProfile(t('profile.defaultName', { n: state.profiles.length + 1 })));
         setView('sounds');
         renameProfile(state.activeProfile);
       },
     },
-    { label: 'Importar perfil…', icon: 'import', action: () => importProfiles(sb.importProfile) },
+    { label: t('menu.importProfile'), icon: 'import', action: () => importProfiles(sb.importProfile) },
   ], btn, btn);
 });
 // ---------- tema ----------
@@ -763,10 +768,10 @@ async function refreshOutputs() {
 
 function renderOutputs() {
   const sel = $('#output');
-  const options = [['default', 'Saída padrão do sistema']];
-  outputs.forEach((d, i) => options.push([d.deviceId, d.label || `Saída ${i + 1}`]));
+  const options = [['default', t('output.default')]];
+  outputs.forEach((d, i) => options.push([d.deviceId, d.label || t('output.numbered', { n: i + 1 })]));
   if (state.outputDevice !== 'default' && !outputs.some((d) => d.deviceId === state.outputDevice)) {
-    options.push([state.outputDevice, 'Dispositivo desconectado']);
+    options.push([state.outputDevice, t('output.disconnected')]);
   }
   const current = [...sel.options].map((o) => o.value + '\n' + o.text).join('\n');
   if (current !== options.map((o) => o.join('\n')).join('\n')) {
@@ -788,18 +793,18 @@ let identifying = false;
 
 function renderKeyboard() {
   $('#keyboardWrap').hidden = sb.platform !== 'win32';
-  const options = [['', 'Qualquer teclado']];
+  const options = [['', t('keyboard.any')]];
   if (state.inputDevice) options.push([state.inputDevice.id, state.inputDevice.label]);
-  options.push([IDENTIFY, state.inputDevice ? 'Identificar outro teclado…' : 'Identificar teclado…']);
+  options.push([IDENTIFY, t(state.inputDevice ? 'keyboard.identifyOther' : 'keyboard.identify')]);
   $('#keyboard').replaceChildren(...options.map(([value, label]) => new Option(label, value)));
   $('#keyboard').value = state.inputDevice?.id || '';
 }
 
 async function identifyKeyboard() {
   identifying = true;
-  $('#captureTitle').textContent = 'Aperte uma tecla no teclado dos sons';
+  $('#captureTitle').textContent = t('keyboard.captureTitle');
   $('#captureKey').textContent = '⌨';
-  $('#captureHint').innerHTML = 'Daí em diante só ele dispara os sons.<br/><kbd>Esc</kbd> cancela';
+  $('#captureHint').innerHTML = t('keyboard.captureHint');
   $('#capture').hidden = false;
   const before = state.inputDevice?.id;
   const next = await sb.identifyKeyboard();
@@ -807,8 +812,8 @@ async function identifyKeyboard() {
   $('#capture').hidden = true;
   $('#captureHint').innerHTML = t('capture.hint');
   applyState(next);
-  if (next.keyboardError) toast('Não foi possível ler os teclados; usando qualquer teclado');
-  else if (next.inputDevice && next.inputDevice.id !== before) toast(`Só "${next.inputDevice.label}" dispara os sons agora`);
+  if (next.keyboardError) toast(t('keyboard.error'));
+  else if (next.inputDevice && next.inputDevice.id !== before) toast(t('keyboard.chosen', { name: next.inputDevice.label }));
 }
 
 $('#keyboard').addEventListener('change', async (e) => {
@@ -849,18 +854,18 @@ let capturing = null;
 
 function captureKey(id) {
   capturing = id;
-  let title = 'Pressione uma tecla';
-  if (id === STOP) title = 'Tecla para parar tudo';
+  let title = t('capture.title');
+  if (id === STOP) title = t('capture.stop');
   if (id.startsWith(PROFILE)) {
     const profile = state.profiles.find((p) => profileTarget(p.id) === id);
-    title = `Tecla para abrir "${profile.name}"`;
+    title = t('capture.profile', { name: profile.name });
   }
-  if (id === EDITOR) title = `Tecla para "${$('#edName').value.trim() || 'este som'}"`;
+  if (id === EDITOR) title = t('capture.sound', { name: $('#edName').value.trim() || t('capture.thisSound') });
   $('#captureTitle').textContent = title;
   $('#captureKey').textContent = '?';
   $('#captureHint').innerHTML = canUnbind(id)
     ? t('capture.hint')
-    : 'Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/><kbd>Esc</kbd> cancela';
+    : t('capture.hintRequired');
   $('#capture').hidden = false;
   // desliga os atalhos globais para a tecla chegar aqui mesmo se já estiver registrada
   sb.setCapturing(true);
@@ -886,18 +891,18 @@ function keyConflicts(accelerator, id) {
   const self = id === EDITOR ? editor.draft.id : id;
   const lost = [];
   const sound = state.sounds.find((s) => s.accelerator === accelerator && s.id !== self);
-  if (sound) lost.push(`sai de "${sound.name}"`);
+  if (sound) lost.push(t('conflict.sound', { name: sound.name }));
   // "parar tudo" e as teclas de perfil valem em qualquer perfil, então tiram a tecla dos outros também
   if (id === STOP || id.startsWith(PROFILE)) {
     for (const p of state.profiles) {
       if (p.id === state.activeProfile) continue;
       const other = p.soundKeys.find((s) => s.accelerator === accelerator);
-      if (other) lost.push(`sai de "${other.name}" (${p.name})`);
+      if (other) lost.push(t('conflict.otherProfile', { name: other.name, profile: p.name }));
     }
   }
   const profile = state.profiles.find((p) => p.accelerator === accelerator && profileTarget(p.id) !== id);
-  if (profile) lost.push(`deixa de abrir o perfil "${profile.name}"`);
-  if (id !== STOP && state.stopAccelerator === accelerator) lost.push('deixa de parar todos os sons');
+  if (profile) lost.push(t('conflict.profile', { name: profile.name }));
+  if (id !== STOP && state.stopAccelerator === accelerator) lost.push(t('conflict.stop'));
   return lost;
 }
 
@@ -923,7 +928,7 @@ async function finishCapture(e) {
   }
   const sc = eventToShortcut(e);
   if (!sc) {
-    toast('Essa tecla não é suportada');
+    toast(t('toast.unsupportedKey'));
     return;
   }
   $('#captureKey').textContent = sc.keyLabel;
@@ -939,11 +944,11 @@ async function finishCapture(e) {
 
   const next = await bindKey(id, sc);
   applyState(next);
-  if (lost.length) toast(`${sc.keyLabel} ${lost.join(' e ')}`);
+  if (lost.length) toast(t('conflict.toast', { key: sc.keyLabel, changes: joinList(lost) }));
   if (numpadWithoutNumLock(e) && !next.deviceMode) {
-    toast('Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco');
+    toast(t('toast.numlock'));
   } else if (next.failedHotkeys.includes(sc.accelerator)) {
-    toast(`${sc.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
+    toast(t('toast.keyInUse', { key: sc.keyLabel }));
   }
 }
 
@@ -1016,7 +1021,7 @@ function navKey(e) {
 
 async function removeWithConfirm(id) {
   const sound = state.sounds.find((s) => s.id === id);
-  if (!sound || !confirm(`Remover "${sound.name}"?`)) return;
+  if (!sound || !confirm(t('row.confirmRemove', { name: sound.name }))) return;
   const ids = visibleIds();
   const next = ids[ids.indexOf(id) + 1] ?? ids[ids.indexOf(id) - 1];
   applyState(await sb.removeSound(id));
@@ -1050,7 +1055,7 @@ const editorOpen = () => !ed.modal.hidden;
 // escolhidos pelo botão ou soltos na janela: entram na fila do modal
 function enqueue(files) {
   if (!files.length) {
-    toast('Nenhum arquivo de áudio reconhecido');
+    toast(t('toast.noAudio'));
     return;
   }
   editor.queue.push(...files);
@@ -1083,7 +1088,7 @@ async function openEditor(draft) {
   ed.note.textContent = '';
   ed.note.classList.remove('warn');
   ed.name.value = draft.name;
-  ed.msg.textContent = 'Carregando…';
+  ed.msg.textContent = t('editor.loading');
   ed.modal.hidden = false;
   renderEditor();
   ed.name.focus();
@@ -1101,7 +1106,7 @@ async function openEditor(draft) {
     ed.msg.textContent = '';
   } catch {
     if (load !== editor.load) return;
-    ed.msg.textContent = 'Não foi possível ler este áudio';
+    ed.msg.textContent = t('editor.readError');
   }
   renderEditor();
 }
@@ -1150,19 +1155,19 @@ function renderEditor() {
   if (!d) return;
   const editing = !!d.id;
   const step = editor.total - editor.queue.length;
-  $('#edTitle').textContent = editing ? 'Editar som' : 'Adicionar áudio';
-  $('#edStep').textContent = !editing && editor.total > 1 ? `${step} de ${editor.total}` : '';
+  $('#edTitle').textContent = t(editing ? 'editor.titleEdit' : 'editor.titleAdd');
+  $('#edStep').textContent = !editing && editor.total > 1 ? t('editor.step', { step, total: editor.total }) : '';
   ed.skip.hidden = editing || editor.total < 2;
-  ed.save.textContent = editing ? 'Salvar' : 'Adicionar';
+  ed.save.textContent = t(editing ? 'editor.save' : 'editor.add');
 
-  ed.key.textContent = d.keyLabel || 'Escolher tecla';
+  ed.key.textContent = d.keyLabel || t('editor.chooseKey');
   ed.key.classList.toggle('unbound', !d.keyLabel);
-  if (!ed.note.textContent) ed.note.textContent = d.keyLabel ? 'Clique para trocar' : 'Clique e aperte a tecla que vai tocar o som';
+  if (!ed.note.textContent) ed.note.textContent = t(d.keyLabel ? 'editor.keyChange' : 'editor.keyPick');
 
   const loaded = editor.duration > 0;
   // som novo que não decodifica provavelmente nem toca; um existente ainda pode ter nome e tecla trocados
   ed.save.disabled = !d.keyLabel || (!editing && !loaded);
-  ed.save.title = !d.keyLabel ? 'Escolha uma tecla para continuar' : '';
+  ed.save.title = !d.keyLabel ? t('editor.needKey') : '';
   ed.wave.classList.toggle('empty', !loaded);
   ed.preview.disabled = !loaded;
   $('#edReset').disabled = !loaded || (d.start === 0 && d.end === null);
@@ -1249,7 +1254,7 @@ async function togglePreview() {
   await applySink(audio);
   if (editor.preview !== audio) return;
   ed.preview.classList.add('playing');
-  ed.preview.querySelector('span').textContent = 'Parar';
+  ed.preview.querySelector('span').textContent = t('editor.stop');
   ed.playhead.hidden = false;
   audio.addEventListener('ended', stopPreview);
   audio.play().catch(stopPreview);
@@ -1269,7 +1274,7 @@ function stopPreview() {
   editor.preview?.pause();
   editor.preview = null;
   ed.preview.classList.remove('playing');
-  ed.preview.querySelector('span').textContent = 'Ouvir trecho';
+  ed.preview.querySelector('span').textContent = t('editor.preview');
   ed.playhead.hidden = true;
 }
 
@@ -1282,8 +1287,8 @@ function setEditorKey(sc, lost, numLockOff) {
   d.accelerator = sc.accelerator;
   d.keyLabel = sc.keyLabel;
   let note = '';
-  if (lost.length) note = `Ao salvar, ${sc.keyLabel} ${lost.join(' e ')}`;
-  else if (numLockOff) note = 'Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco';
+  if (lost.length) note = t('editor.onSave', { key: sc.keyLabel, changes: joinList(lost) });
+  else if (numLockOff) note = t('toast.numlock');
   ed.note.textContent = note;
   ed.note.classList.toggle('warn', !!note);
   renderEditor();
@@ -1295,7 +1300,7 @@ async function saveEditor() {
   ed.save.disabled = true; // Enter duas vezes não adiciona duas vezes; o renderEditor do próximo reabilita
   stopPreview();
   const fields = {
-    name: ed.name.value.trim() || 'Sem nome',
+    name: ed.name.value.trim() || t('name.untitled'),
     accelerator: d.accelerator,
     keyLabel: d.keyLabel,
   };
@@ -1304,7 +1309,7 @@ async function saveEditor() {
     applyState(await sb.updateSound(d.id, fields));
   } else {
     applyState(await sb.addSound({ path: d.path, ...fields }));
-    if (state.failedHotkeys.includes(d.accelerator)) toast(`${d.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
+    if (state.failedHotkeys.includes(d.accelerator)) toast(t('toast.keyInUse', { key: d.keyLabel }));
   }
   // segue para o próximo da fila (arquivos soltos durante a edição também entram nela)
   editor.draft = null;
@@ -1422,14 +1427,10 @@ $('#emptyAdd').addEventListener('click', pickFiles);
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
 
-// onde o app fica quando a janela fecha muda de sistema para sistema
-$('#closeHint').textContent = isMac
-  ? 'Continuando, as teclas seguem funcionando com a janela fechada; reabra pelo ícone no Dock e saia com Cmd+Q.'
-  : 'Continuando, as teclas seguem funcionando com a janela fechada. O Soundboard fica no ícone perto do relógio, de onde se abre de novo, troca de perfil ou sai.';
 $('#backupExport').addEventListener('click', async () => {
   const res = await sb.exportBackup();
-  if (res.ok) toast(`Backup salvo em ${res.file}`);
-  else if (res.error) toast(`Não foi possível salvar o backup: ${res.error}`);
+  if (res.ok) toast(t('toast.backupSaved', { file: res.file }));
+  else if (res.error) toast(t('toast.backupFailed', { error: res.error }));
 });
 $('#backupRestore').addEventListener('click', () => importProfiles(sb.restoreBackup));
 
@@ -1453,7 +1454,7 @@ $('#closeToTray').addEventListener('change', async (e) => {
 
 $('#openAtLogin').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ openAtLogin: e.target.checked }));
-  if (e.target.checked && !state.openAtLogin) toast('O sistema não deixou o Soundboard iniciar sozinho');
+  if (e.target.checked && !state.openAtLogin) toast(t('toast.loginRefused'));
 });
 
 $('#exclusive').addEventListener('change', async (e) => {
@@ -1508,22 +1509,18 @@ function renderUpdate(u) {
   const { mode, current, latest, progress, error } = u;
   const st = u.state;
   $('#updTitle').textContent = `Soundboard ${current}`;
-  const manualHint = mode === 'manual'
-    ? isMac
-      ? ' No Mac, atualizar é baixar a versão nova e instalar por cima (atualizar sozinho exigiria a assinatura paga da Apple).'
-      : ' Nesta instalação (portátil ou .deb), atualizar é baixar a versão nova e instalar por cima.'
-    : '';
+  const manualHint = mode === 'manual' ? ` ${t(isMac ? 'update.manualMac' : 'update.manual')}` : '';
   const texts = {
-    idle: 'O Soundboard procura versões novas sozinho ao abrir e a cada 6 horas.' + manualHint,
-    checking: 'Procurando versões novas…',
-    none: 'Você está na versão mais nova.' + manualHint,
-    downloading: `Baixando a versão ${latest}… ${progress}%`,
-    ready: `A versão ${latest} já foi baixada. Reinicie para atualizar, ou ela é instalada quando você sair do app.`,
-    available: `A versão ${latest} está disponível. Seus sons, perfis e configurações continuam depois de instalar.`,
-    error: `Não foi possível procurar agora (${error}).`,
+    idle: t('update.idle') + manualHint,
+    checking: t('update.checking'),
+    none: t('update.none') + manualHint,
+    downloading: t('update.downloading', { version: latest, progress }),
+    ready: t('update.ready', { version: latest }),
+    available: t('update.available', { version: latest }),
+    error: t('update.error', { error }),
   };
   $('#updText').textContent = texts[st] || '';
-  const actionLabel = st === 'ready' ? 'Reiniciar e atualizar' : st === 'available' ? `Baixar versão ${latest}` : '';
+  const actionLabel = st === 'ready' ? t('update.restart') : st === 'available' ? t('update.download', { version: latest }) : '';
   $('#updAction').hidden = !actionLabel;
   $('#updAction').textContent = actionLabel;
   $('#updCheck').disabled = ['checking', 'downloading', 'ready'].includes(st);
@@ -1531,9 +1528,9 @@ function renderUpdate(u) {
   const side = st === 'ready' || st === 'available';
   $('#sideUpdate').hidden = !side;
   if (side) {
-    $('#sideUpdTitle').textContent = st === 'ready' ? `Versão ${latest} pronta` : `Versão ${latest} disponível`;
-    $('#sideUpdText').textContent = st === 'ready' ? 'Reinicie para atualizar' : 'Baixe e instale por cima';
-    $('#sideUpdAction').textContent = st === 'ready' ? 'Reiniciar' : 'Baixar';
+    $('#sideUpdTitle').textContent = t(st === 'ready' ? 'update.side.ready' : 'update.side.available', { version: latest });
+    $('#sideUpdText').textContent = t(st === 'ready' ? 'update.side.readyText' : 'update.side.availableText');
+    $('#sideUpdAction').textContent = t(st === 'ready' ? 'update.side.restart' : 'update.side.download');
   }
 }
 
