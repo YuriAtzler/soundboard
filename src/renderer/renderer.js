@@ -4,16 +4,17 @@ const isMac = sb.platform === 'darwin';
 const $ = (sel) => document.querySelector(sel);
 const grid = $('#grid');
 const empty = $('#empty');
-const tpl = $('#cardTpl');
+const tpl = $('#rowTpl');
+const list = $('#list');
 const tabTpl = $('#tabTpl');
 const tabsEl = $('#tabs');
 
 let state = {
   sounds: [], profiles: [], activeProfile: null, masterVolume: 1,
-  exclusive: false, outputDevice: 'default', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
+  exclusive: false, outputDevice: 'default', theme: 'system', sort: { by: 'added', dir: 'asc' }, inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
-const cards = new Map(); // id -> element
+const rows = new Map(); // id -> linha da tabela
 const tabs = new Map(); // id do perfil -> element
 
 // ---------- teclas -> accelerator do Electron ----------
@@ -68,6 +69,37 @@ function numpadWithoutNumLock(e) {
   return sb.platform === 'win32' && /^Numpad\d$/.test(e.code) && !e.getModifierState('NumLock');
 }
 
+// Estado do NumLock, para avisar das teclas numN (só dá para ler num evento de teclado ou mouse).
+let numLockOff = false;
+function trackNumLock(e) {
+  const off = sb.platform === 'win32' && e.getModifierState && !e.getModifierState('NumLock');
+  if (off === numLockOff) return;
+  numLockOff = off;
+  if (state.profiles.length) applyState(state); // atualiza os avisos das teclas
+}
+window.addEventListener('keydown', trackNumLock, true);
+window.addEventListener('mousedown', trackNumLock, true);
+
+// por que uma tecla vinculada só funciona com o app em foco; null se estiver tudo certo
+function keyProblem(accelerator, keyLabel) {
+  if (!accelerator) return null;
+  if (state.failedHotkeys.includes(accelerator)) {
+    return `O sistema não deixou usar ${keyLabel} como atalho global (outro programa já usa). Ela só funciona com o Soundboard em foco.`;
+  }
+  if (numLockOff && !state.deviceMode && /^num\d$/.test(accelerator)) {
+    return `O NumLock está desligado, então ${keyLabel} só funciona com o Soundboard em foco. Ligue o NumLock.`;
+  }
+  return null;
+}
+
+// marca a tecla com problema (borda de aviso + explicação no tooltip)
+function markKey(el, accelerator, keyLabel, title) {
+  const problem = keyProblem(accelerator, keyLabel);
+  el.classList.toggle('warn', !!problem);
+  el.title = problem || title;
+  return problem;
+}
+
 // ---------- reprodução ----------
 
 function effectiveVolume(sound) {
@@ -87,6 +119,15 @@ async function applySink(audio) {
   }
 }
 
+const stopTimers = new Map(); // id -> timeout que para o som no fim do trecho
+
+// trecho tocado de um som, em segundos; end cai na duração quando o som não foi cortado
+function span(sound, audio) {
+  const start = sound.start || 0;
+  const end = sound.end ?? audio.duration;
+  return { start, end };
+}
+
 async function play(id) {
   const sound = state.sounds.find((s) => s.id === id);
   if (!sound) return;
@@ -95,28 +136,39 @@ async function play(id) {
   if (!audio) {
     audio = new Audio(sound.url);
     audio.preload = 'auto';
-    audio.addEventListener('play', () => cards.get(id)?.classList.add('playing'));
+    audio.addEventListener('play', () => rows.get(id)?.classList.add('playing'));
     const done = () => {
-      const card = cards.get(id);
-      card?.classList.remove('playing');
+      clearTimeout(stopTimers.get(id));
+      const row = rows.get(id);
+      row?.classList.remove('playing');
       setProgress(id, 0);
     };
     audio.addEventListener('ended', done);
     audio.addEventListener('pause', done);
     audio.addEventListener('timeupdate', () => {
-      if (audio.duration) setProgress(id, audio.currentTime / audio.duration);
+      const current = state.sounds.find((s) => s.id === id);
+      if (!current || !audio.duration || audio.paused) return;
+      const { start, end } = span(current, audio);
+      setProgress(id, (audio.currentTime - start) / (end - start));
     });
     players.set(id, audio);
   }
+  clearTimeout(stopTimers.get(id));
   audio.volume = effectiveVolume(sound);
-  audio.currentTime = 0;
+  audio.currentTime = sound.start || 0;
   await applySink(audio);
-  audio.play().catch(() => toast('Não foi possível tocar este arquivo'));
+  audio
+    .play()
+    .then(() => {
+      // o timeupdate só vem ~4x por segundo, então o fim do trecho é por timer
+      if (sound.end) stopTimers.set(id, setTimeout(() => audio.pause(), (sound.end - audio.currentTime) * 1000));
+    })
+    .catch(() => toast('Não foi possível tocar este arquivo'));
 
-  const card = cards.get(id);
-  if (card) {
-    card.classList.add('hit');
-    setTimeout(() => card.classList.remove('hit'), 110);
+  const row = rows.get(id);
+  if (row) {
+    row.classList.add('hit');
+    setTimeout(() => row.classList.remove('hit'), 110);
   }
 }
 
@@ -136,7 +188,7 @@ function stopAll() {
 }
 
 function setProgress(id, ratio) {
-  const bar = cards.get(id)?.querySelector('.progress span');
+  const bar = rows.get(id)?.querySelector('.progress span');
   if (bar) bar.style.width = `${ratio * 100}%`;
 }
 
@@ -144,83 +196,238 @@ function setProgress(id, ratio) {
 
 function applyState(next) {
   state = next;
+  applyTheme();
   $('#exclusive').checked = state.exclusive;
+  $('#closeToTray').value = state.closeToTray === false ? 'quit' : 'tray';
+  $('#openAtLogin').checked = !!state.openAtLogin;
+  $('#openAtLogin').disabled = !state.canOpenAtLogin;
+  $('#loginWrap').classList.toggle('disabled', !state.canOpenAtLogin);
+  $('#loginHint').textContent = state.canOpenAtLogin
+    ? 'Abre o Soundboard escondido na bandeja quando você entra no computador, com as teclas já funcionando.'
+    : 'Só funciona no app instalado (no npm start, o sistema abriria o Electron sem o Soundboard).';
   renderProfiles();
   renderOutputs();
   renderKeyboard();
   $('#master').value = state.masterVolume;
   paintRange($('#master'));
+  showMaster();
   const stopKey = $('#stopKey');
-  stopKey.textContent = state.stopKeyLabel || 'Tecla';
+  stopKey.textContent = state.stopKeyLabel || 'Definir tecla';
   stopKey.classList.toggle('unbound', !state.stopKeyLabel);
+  markKey(stopKey, state.stopAccelerator, state.stopKeyLabel, 'Tecla para parar todos os sons (funciona como atalho global)');
 
   const ids = new Set(state.sounds.map((s) => s.id));
-  for (const [id, el] of cards) {
+  for (const [id, el] of rows) {
     if (!ids.has(id)) {
       el.remove();
-      cards.delete(id);
+      rows.delete(id);
       players.get(id)?.pause();
       players.delete(id);
     }
   }
   for (const sound of state.sounds) {
-    let card = cards.get(sound.id);
-    if (!card) {
-      card = buildCard(sound.id);
-      cards.set(sound.id, card);
-      grid.appendChild(card);
+    let row = rows.get(sound.id);
+    if (!row) {
+      row = buildRow(sound.id);
+      rows.set(sound.id, row);
     }
-    updateCard(card, sound);
+    updateRow(row, sound);
   }
   empty.hidden = state.sounds.length > 0;
+  list.hidden = !state.sounds.length;
+  renderList();
 }
 
-function buildCard(id) {
-  const card = tpl.content.firstElementChild.cloneNode(true);
-  card.dataset.id = id;
+// ---------- busca e ordenação ----------
 
-  card.querySelector('.keycap').addEventListener('click', () => captureKey(id));
-  card.querySelector('.play').addEventListener('click', () => toggle(id));
-  card.querySelector('.remove').addEventListener('click', async () => {
+const search = $('#search');
+// minúsculas e sem acento, para "acao" achar "Ação"
+const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+
+function sortedSounds() {
+  const { by, dir } = state.sort;
+  if (by === 'added') return state.sounds;
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...state.sounds].sort((a, b) => {
+    if (by === 'key') {
+      // sons sem tecla ficam sempre no fim
+      if (!a.keyLabel || !b.keyLabel) return !a.keyLabel - !b.keyLabel;
+      return sign * collator.compare(a.keyLabel, b.keyLabel);
+    }
+    return sign * collator.compare(a.name, b.name);
+  });
+}
+
+// ordena as linhas e esconde as que não batem com a busca
+function renderList() {
+  const query = fold(search.value.trim());
+  let shown = 0;
+  for (const sound of sortedSounds()) {
+    const row = rows.get(sound.id);
+    grid.appendChild(row); // appendChild move a linha para o fim, então a ordem final é a do array
+    row.hidden = !!query && !fold(sound.name).includes(query);
+    if (!row.hidden) shown++;
+  }
+  const noResults = $('#noResults');
+  noResults.hidden = shown > 0 || !state.sounds.length;
+  noResults.textContent = `Nenhum som com "${search.value.trim()}"`;
+  for (const btn of document.querySelectorAll('.sort')) {
+    const active = btn.dataset.sort === state.sort.by;
+    btn.classList.toggle('asc', active && state.sort.dir === 'asc');
+    btn.classList.toggle('desc', active && state.sort.dir === 'desc');
+  }
+  renderSelection();
+  if (cursor && !visibleIds().includes(cursor)) setCursor(null, false);
+}
+
+// ---------- seleção múltipla ----------
+
+const selected = new Set(); // ids dos sons marcados
+let selectAnchor = null; // última linha marcada, de onde parte o Shift+clique
+const bulkVol = $('#bulkVol');
+
+// linhas na ordem em que aparecem (ordenação e busca aplicadas)
+const visibleIds = () => [...grid.children].filter((r) => !r.hidden).map((r) => r.dataset.id);
+
+function renderSelection() {
+  const visible = visibleIds();
+  // som removido, de outro perfil ou escondido pela busca sai da seleção: as ações valem só para o que se vê
+  for (const id of [...selected]) if (!visible.includes(id)) selected.delete(id);
+  for (const [id, row] of rows) {
+    const on = selected.has(id);
+    row.classList.toggle('selected', on);
+    row.querySelector('.select').checked = on;
+  }
+  const all = $('#selectAll');
+  all.checked = visible.length > 0 && selected.size === visible.length;
+  all.indeterminate = selected.size > 0 && !all.checked;
+  list.classList.toggle('selecting', selected.size > 0);
+  $('#bulk').hidden = !selected.size;
+  if (!selected.size) return;
+  $('#bulkCount').textContent = selected.size === 1 ? '1 selecionado' : `${selected.size} selecionados`;
+  if (document.activeElement !== bulkVol) {
+    const volumes = state.sounds.filter((s) => selected.has(s.id)).map((s) => s.volume);
+    bulkVol.value = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+    paintRange(bulkVol);
+    $('#bulkVolValue').textContent = `${Math.round(bulkVol.value * 100)}%`;
+  }
+}
+
+function selectRow(id, on, range) {
+  const ids = visibleIds();
+  if (range && ids.includes(selectAnchor)) {
+    const [a, b] = [ids.indexOf(selectAnchor), ids.indexOf(id)].sort((x, y) => x - y);
+    for (const x of ids.slice(a, b + 1)) on ? selected.add(x) : selected.delete(x);
+  } else if (on) selected.add(id);
+  else selected.delete(id);
+  selectAnchor = id;
+  renderSelection();
+}
+
+function clearSelection() {
+  selected.clear();
+  renderSelection();
+}
+
+$('#selectAll').addEventListener('change', (e) => {
+  if (e.target.checked) visibleIds().forEach((id) => selected.add(id));
+  else selected.clear();
+  renderSelection();
+});
+
+bulkVol.addEventListener('input', () => {
+  const volume = Number(bulkVol.value);
+  $('#bulkVolValue').textContent = `${Math.round(volume * 100)}%`;
+  for (const sound of state.sounds) {
+    if (!selected.has(sound.id)) continue;
+    sound.volume = volume;
+    const row = rows.get(sound.id);
+    const vol = row.querySelector('.vol');
+    vol.value = volume;
+    paintRange(vol);
+    showVolume(row, volume);
+    const audio = players.get(sound.id);
+    if (audio) audio.volume = effectiveVolume(sound);
+  }
+});
+bulkVol.addEventListener('change', async () => {
+  applyState(await sb.setVolumes([...selected], Number(bulkVol.value)));
+});
+
+$('#bulkRemove').addEventListener('click', async () => {
+  const n = selected.size;
+  if (!confirm(n === 1 ? 'Remover o som selecionado?' : `Remover os ${n} sons selecionados?`)) return;
+  applyState(await sb.removeSounds([...selected]));
+  toast(n === 1 ? 'Som removido' : `${n} sons removidos`);
+});
+$('#bulkClear').addEventListener('click', clearSelection);
+
+search.addEventListener('input', renderList);
+search.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  search.value = '';
+  renderList();
+  search.blur();
+});
+
+// clicar na coluna alterna: crescente → decrescente → ordem de adição
+for (const btn of document.querySelectorAll('.sort')) {
+  btn.addEventListener('click', () => {
+    const { by, dir } = state.sort;
+    let next = { by: btn.dataset.sort, dir: 'asc' };
+    if (by === btn.dataset.sort) next = dir === 'asc' ? { by, dir: 'desc' } : { by: 'added', dir: 'asc' };
+    state.sort = next;
+    renderList();
+    sb.updateSettings({ sort: next });
+  });
+}
+
+function buildRow(id) {
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  row.dataset.id = id;
+
+  row.querySelector('.keycap').addEventListener('click', () => captureKey(id));
+  row.querySelector('.play').addEventListener('click', () => toggle(id));
+  row.querySelector('.select').addEventListener('click', (e) => selectRow(id, e.target.checked, e.shiftKey));
+  row.querySelector('.remove').addEventListener('click', async () => {
     applyState(await sb.removeSound(id));
   });
 
-  const name = card.querySelector('.name');
-  name.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === 'Escape') name.blur();
-  });
-  name.addEventListener('change', async () => {
-    const value = name.value.trim() || 'Sem nome';
-    applyState(await sb.updateSound(id, { name: value }));
-  });
+  row.querySelector('.name').addEventListener('click', () => editSound(id));
+  row.querySelector('.edit').addEventListener('click', () => editSound(id));
 
-  const vol = card.querySelector('.vol');
+  const vol = row.querySelector('.vol');
   vol.addEventListener('input', () => {
     const sound = state.sounds.find((s) => s.id === id);
     sound.volume = Number(vol.value);
+    showVolume(row, sound.volume);
     const audio = players.get(id);
     if (audio) audio.volume = effectiveVolume(sound);
   });
   vol.addEventListener('change', () => sb.updateSound(id, { volume: Number(vol.value) }));
 
-  return card;
+  return row;
 }
 
-function updateCard(card, sound) {
-  card.style.setProperty('--c', `var(--c${sound.color % 6})`);
-  const key = card.querySelector('.keycap');
-  if (sound.keyLabel) {
-    key.textContent = sound.keyLabel;
-    key.classList.remove('unbound');
-  } else {
-    key.textContent = 'Vincular tecla';
-    key.classList.add('unbound');
-  }
-  const name = card.querySelector('.name');
-  if (document.activeElement !== name) name.value = sound.name;
-  const vol = card.querySelector('.vol');
+function updateRow(row, sound) {
+  row.style.setProperty('--c', `var(--c${sound.color % 6})`);
+  const key = row.querySelector('.keycap');
+  key.textContent = sound.keyLabel || 'Sem tecla';
+  key.classList.toggle('unbound', !sound.keyLabel);
+  const problem = markKey(key, sound.accelerator, sound.keyLabel, 'Clique para trocar a tecla');
+  const warn = row.querySelector('.key-warn');
+  warn.hidden = !problem && !!sound.keyLabel;
+  warn.title = problem || 'Este som não tem tecla: só toca pelo botão ▶. Clique em "Sem tecla" para vincular uma.';
+  row.querySelector('.name').textContent = sound.name;
+  const vol = row.querySelector('.vol');
   vol.value = sound.volume;
   paintRange(vol);
+  showVolume(row, sound.volume);
+}
+
+function showVolume(row, volume) {
+  row.querySelector('.vol-value').textContent = `${Math.round(volume * 100)}%`;
 }
 
 // ---------- perfis ----------
@@ -243,11 +450,16 @@ function renderProfiles() {
     tab.classList.toggle('active', profile.id === state.activeProfile);
     const name = tab.querySelector('.tab-name');
     if (document.activeElement !== name) name.value = profile.name;
+    tab.querySelector('.tab-count').textContent = profile.count;
     const key = tab.querySelector('.keycap');
     key.textContent = profile.keyLabel || '+tecla';
     key.classList.toggle('unbound', !profile.keyLabel);
+    markKey(key, profile.accelerator, profile.keyLabel, 'Tecla para abrir este perfil (vale em qualquer perfil)');
   }
   tabsEl.classList.toggle('single', state.profiles.length === 1);
+  const active = state.profiles.find((p) => p.id === state.activeProfile);
+  $('#profileName').textContent = active.name;
+  $('#profileCount').textContent = active.count === 1 ? '1 som' : `${active.count} sons`;
   tabs.get(state.activeProfile)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -274,13 +486,57 @@ function buildTab(id) {
     e.stopPropagation();
     captureKey(profileTarget(id));
   });
-  tab.querySelector('.tab-x').addEventListener('click', async (e) => {
+  const more = tab.querySelector('.tab-more');
+  more.addEventListener('click', (e) => {
     e.stopPropagation();
-    const profile = state.profiles.find((p) => p.id === id);
-    if (profile.count && !confirm(`Apagar o perfil "${profile.name}" e os ${profile.count} sons dele?`)) return;
-    applyState(await sb.removeProfile(id));
+    profileMenu(id, more);
+  });
+  tab.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    profileMenu(id, { x: e.clientX, y: e.clientY });
   });
   return tab;
+}
+
+function profileMenu(id, at) {
+  const profile = state.profiles.find((p) => p.id === id);
+  openPopover([
+    { label: 'Renomear', icon: 'rename', action: () => renameProfile(id) },
+    { label: profile.keyLabel ? `Trocar tecla (${profile.keyLabel})` : 'Definir tecla', icon: 'key', action: () => captureKey(profileTarget(id)) },
+    { label: 'Exportar…', icon: 'export', action: () => exportProfile(id) },
+    'sep',
+    { label: 'Apagar perfil', icon: 'trash', danger: true, disabled: state.profiles.length === 1, action: () => deleteProfile(id) },
+  ], at, tabs.get(id));
+}
+
+async function deleteProfile(id) {
+  const profile = state.profiles.find((p) => p.id === id);
+  if (profile.count && !confirm(`Apagar o perfil "${profile.name}" e os ${profile.count} sons dele?`)) return;
+  applyState(await sb.removeProfile(id));
+}
+
+async function exportProfile(id) {
+  const res = await sb.exportProfile(id);
+  if (res.ok) toast(`Perfil exportado em ${res.file}`);
+  else if (res.error) toast(`Não foi possível exportar: ${res.error}`);
+}
+
+// importa um .soundboard (escolhido no diálogo ou solto na janela) e conta o que ficou de fora
+async function importProfiles(request) {
+  const res = await request();
+  applyState(res.state);
+  if (res.error) {
+    toast(res.error);
+    return;
+  }
+  const names = res.imported || [];
+  if (!names.length) return;
+  setView('sounds');
+  let msg = names.length === 1 ? `Perfil "${names[0]}" importado` : `${names.length} perfis importados`;
+  if (res.replaced) msg = `Backup restaurado: ${names.length === 1 ? '1 perfil' : `${names.length} perfis`}`;
+  if (res.missing) msg += ` · ${res.missing} ${res.missing === 1 ? 'áudio não veio' : 'áudios não vieram'} no arquivo`;
+  if (res.droppedKeys) msg += ` · ${res.droppedKeys} ${res.droppedKeys === 1 ? 'tecla já tinha dono e ficou' : 'teclas já tinham dono e ficaram'} de fora`;
+  toast(msg);
 }
 
 function renameProfile(id) {
@@ -295,10 +551,170 @@ async function switchProfile(id) {
   if (id !== state.activeProfile) applyState(await sb.switchProfile(id));
 }
 
-$('#addProfile').addEventListener('click', async () => {
-  applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
-  renameProfile(state.activeProfile);
+// gaveta da sidebar (janela estreita)
+const setNav = (open) => document.body.classList.toggle('nav-open', open);
+for (const btn of document.querySelectorAll('.menu')) btn.addEventListener('click', () => setNav(true));
+
+// tela principal: 'sounds' (tabela) ou 'settings'
+const settingsOpen = () => document.body.dataset.view === 'settings';
+function setView(view) {
+  document.body.dataset.view = view;
+  setNav(false);
+  $('.content').scrollTop = 0;
+}
+$('#openSettings').addEventListener('click', () => setView(settingsOpen() ? 'sounds' : 'settings'));
+$('#settingsBack').addEventListener('click', () => setView('sounds'));
+$('#scrim').addEventListener('click', () => setNav(false));
+// trocar de perfil fecha a gaveta; clicar no perfil já aberto não, para dar o duplo clique de renomear
+tabsEl.addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab || e.target.closest('button')) return;
+  // clicar num perfil sai das configurações
+  if (settingsOpen()) setView('sounds');
+  else if (!tab.classList.contains('active')) setNav(false);
 });
+
+$('#addProfile').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  openPopover([
+    {
+      label: 'Novo perfil',
+      icon: 'plus',
+      action: async () => {
+        applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
+        setView('sounds');
+        renameProfile(state.activeProfile);
+      },
+    },
+    { label: 'Importar perfil…', icon: 'import', action: () => importProfiles(sb.importProfile) },
+  ], btn, btn);
+});
+// ---------- tema ----------
+
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+// 'light' ou 'dark' de fato, resolvendo o 'system'
+function resolvedTheme(theme = state.theme) {
+  if (theme === 'system') return systemDark.matches ? 'dark' : 'light';
+  return theme;
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedTheme();
+  // o tema aparece em dois lugares: no pé da sidebar e no card das configurações
+  for (const btn of document.querySelectorAll('.theme button')) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.theme === state.theme));
+  }
+}
+
+// troca o tema abrindo o novo num círculo a partir de (x, y)
+function setTheme(theme, x, y) {
+  const changes = resolvedTheme(theme) !== resolvedTheme();
+  const apply = () => {
+    state.theme = theme;
+    applyTheme();
+  };
+  sb.updateSettings({ theme });
+  if (!changes || !document.startViewTransition || reducedMotion.matches) {
+    apply();
+    return;
+  }
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const transition = document.startViewTransition(apply);
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+      { duration: 500, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' },
+    );
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.theme')) return;
+  const btn = e.target.closest('button');
+  if (!btn || btn.dataset.theme === state.theme) return;
+  const r = btn.getBoundingClientRect();
+  setTheme(btn.dataset.theme, r.left + r.width / 2, r.top + r.height / 2);
+});
+// no 'system', acompanha o sistema operacional
+systemDark.addEventListener('change', applyTheme);
+state.theme = sb.initialTheme;
+applyTheme();
+
+// ---------- menu suspenso ----------
+
+const popover = $('#popover');
+let popoverOwner = null; // quem abriu o menu (fica marcado enquanto ele está aberto)
+let popoverClosed = { owner: null, at: 0 };
+
+const ICONS = {
+  rename: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>',
+  key: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  export: '<path d="M12 3v12M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
+  import: '<path d="M12 15V3M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+};
+
+// items: [{ label, icon, action, danger, disabled } | 'sep']; at: elemento âncora ou { x, y }
+function openPopover(items, at, owner) {
+  // o mousedown fora já fechou este menu; o clique no mesmo botão não deve reabri-lo
+  if (owner && popoverClosed.owner === owner && performance.now() - popoverClosed.at < 300) return;
+  closePopover();
+  popover.replaceChildren(...items.map((item) => {
+    if (item === 'sep') return document.createElement('hr');
+    const btn = document.createElement('button');
+    btn.setAttribute('role', 'menuitem');
+    btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[item.icon]}</svg>`;
+    btn.append(item.label);
+    btn.classList.toggle('danger', !!item.danger);
+    btn.disabled = !!item.disabled;
+    btn.addEventListener('click', () => {
+      closePopover();
+      item.action();
+    });
+    return btn;
+  }));
+  popover.hidden = false;
+  const box = at instanceof Element ? at.getBoundingClientRect() : { left: at.x, right: at.x, top: at.y, bottom: at.y };
+  const { offsetWidth: w, offsetHeight: h } = popover;
+  const x = Math.max(8, Math.min(box.left, innerWidth - w - 8));
+  const y = box.bottom + 4 + h > innerHeight - 8 ? Math.max(8, box.top - h - 4) : box.bottom + 4;
+  popover.style.left = `${x}px`;
+  popover.style.top = `${y}px`;
+  popoverOwner = owner;
+  owner?.classList.add('menu-open');
+  popover.querySelector('button:not(:disabled)')?.focus();
+}
+
+function closePopover() {
+  if (popover.hidden) return;
+  popover.hidden = true;
+  popoverOwner?.classList.remove('menu-open');
+  popoverClosed = { owner: popoverOwner, at: performance.now() };
+  popoverOwner = null;
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (!popover.hidden && !popover.contains(e.target)) closePopover();
+}, true);
+window.addEventListener('blur', closePopover);
+window.addEventListener('resize', closePopover);
+
+// setas andam entre os itens; Enter/Espaço acionam pelo próprio botão
+function popoverKey(e) {
+  if (e.code === 'Escape') {
+    closePopover();
+    return;
+  }
+  if (e.code !== 'ArrowDown' && e.code !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...popover.querySelectorAll('button:not(:disabled)')];
+  const i = items.indexOf(document.activeElement);
+  const next = e.code === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+  items[next]?.focus();
+}
 
 // ---------- saída de áudio ----------
 
@@ -393,10 +809,13 @@ document.addEventListener('input', (e) => {
 
 // ---------- captura de tecla ----------
 
-// alvos da captura: id de um som, STOP (tecla de "parar tudo") ou profileTarget(id)
+// alvos da captura: id de um som, STOP (tecla de "parar tudo"), profileTarget(id) ou EDITOR (o modal)
 const STOP = 'stop';
 const PROFILE = 'profile:';
+const EDITOR = 'editor';
 const profileTarget = (id) => PROFILE + id;
+// som é obrigado a ter tecla, então só "parar tudo" e perfis aceitam o Backspace para remover
+const canUnbind = (id) => id === STOP || id.startsWith(PROFILE);
 let capturing = null;
 
 function captureKey(id) {
@@ -407,8 +826,12 @@ function captureKey(id) {
     const profile = state.profiles.find((p) => profileTarget(p.id) === id);
     title = `Tecla para abrir "${profile.name}"`;
   }
+  if (id === EDITOR) title = `Tecla para "${$('#edName').value.trim() || 'este som'}"`;
   $('#captureTitle').textContent = title;
   $('#captureKey').textContent = '?';
+  $('#captureHint').innerHTML = canUnbind(id)
+    ? captureHint
+    : 'Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/><kbd>Esc</kbd> cancela';
   $('#capture').hidden = false;
   // desliga os atalhos globais para a tecla chegar aqui mesmo se já estiver registrada
   sb.setCapturing(true);
@@ -429,6 +852,26 @@ function bindKey(id, sc) {
   return sb.updateSound(id, keys);
 }
 
+// quem perde a tecla se ela for para o alvo (o main faz a troca; aqui é só para avisar)
+function keyConflicts(accelerator, id) {
+  const self = id === EDITOR ? editor.draft.id : id;
+  const lost = [];
+  const sound = state.sounds.find((s) => s.accelerator === accelerator && s.id !== self);
+  if (sound) lost.push(`sai de "${sound.name}"`);
+  // "parar tudo" e as teclas de perfil valem em qualquer perfil, então tiram a tecla dos outros também
+  if (id === STOP || id.startsWith(PROFILE)) {
+    for (const p of state.profiles) {
+      if (p.id === state.activeProfile) continue;
+      const other = p.soundKeys.find((s) => s.accelerator === accelerator);
+      if (other) lost.push(`sai de "${other.name}" (${p.name})`);
+    }
+  }
+  const profile = state.profiles.find((p) => p.accelerator === accelerator && profileTarget(p.id) !== id);
+  if (profile) lost.push(`deixa de abrir o perfil "${profile.name}"`);
+  if (id !== STOP && state.stopAccelerator === accelerator) lost.push('deixa de parar todos os sons');
+  return lost;
+}
+
 async function finishCapture(e) {
   const id = capturing;
   if (e.code === 'Escape') {
@@ -437,6 +880,7 @@ async function finishCapture(e) {
     return;
   }
   if (e.code === 'Backspace') {
+    if (!canUnbind(id)) return; // tecla de som é obrigatória
     $('#capture').hidden = true;
     await endCapture();
     applyState(await bindKey(id, null));
@@ -455,23 +899,14 @@ async function finishCapture(e) {
   }
   $('#captureKey').textContent = sc.keyLabel;
   setTimeout(() => ($('#capture').hidden = true), 180);
-  await endCapture();
-
-  // quem perde a tecla (o main faz a troca; aqui é só para avisar)
-  const lost = [];
-  const sound = state.sounds.find((s) => s.accelerator === sc.accelerator && s.id !== id);
-  if (sound) lost.push(`foi movida de "${sound.name}"`);
-  // "parar tudo" e as teclas de perfil valem em qualquer perfil, então tiram a tecla dos outros também
-  if (id === STOP || id.startsWith(PROFILE)) {
-    for (const p of state.profiles) {
-      if (p.id === state.activeProfile) continue;
-      const other = p.soundKeys.find((s) => s.accelerator === sc.accelerator);
-      if (other) lost.push(`foi removida de "${other.name}" (${p.name})`);
-    }
+  const lost = keyConflicts(sc.accelerator, id);
+  if (id === EDITOR) {
+    // no modal a tecla só vale ao salvar
+    applyState(await endCapture());
+    setEditorKey(sc, lost, numpadWithoutNumLock(e));
+    return;
   }
-  const profile = state.profiles.find((p) => p.accelerator === sc.accelerator && profileTarget(p.id) !== id);
-  if (profile) lost.push(`deixou de abrir o perfil "${profile.name}"`);
-  if (id !== STOP && state.stopAccelerator === sc.accelerator) lost.push('deixou de parar todos os sons');
+  await endCapture();
 
   const next = await bindKey(id, sc);
   applyState(next);
@@ -482,6 +917,382 @@ async function finishCapture(e) {
     toast(`${sc.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
   }
 }
+
+// ---------- navegação pelo teclado ----------
+
+let cursor = null; // id da linha em foco
+
+// o destaque só aparece navegando pelo teclado; o clique só move o cursor
+function setCursor(id, fromKeyboard) {
+  cursor = id;
+  list.classList.toggle('kbd', fromKeyboard);
+  for (const [rid, row] of rows) row.classList.toggle('cursor', rid === id);
+  if (fromKeyboard) rows.get(id)?.scrollIntoView({ block: 'nearest' });
+}
+
+function moveCursor(to) {
+  const ids = visibleIds();
+  if (!ids.length) return;
+  const i = ids.indexOf(cursor);
+  let next;
+  if (to === 'first') next = 0;
+  else if (to === 'last') next = ids.length - 1;
+  else if (i < 0 || !list.classList.contains('kbd')) next = i < 0 ? (to > 0 ? 0 : ids.length - 1) : i; // primeira seta só mostra o cursor
+  else next = Math.min(ids.length - 1, Math.max(0, i + to));
+  // tira o foco de um botão da linha, senão o Espaço/Enter seguinte acionaria o botão
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+  setCursor(ids[next], true);
+}
+
+// setas, Home/End, Espaço, Enter/F2 e Delete na tabela; true se a tecla foi tratada
+function navKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || !state.sounds.length || settingsOpen()) return false;
+  const t = e.target;
+  // em cima de um controle, a tecla é dele (slider anda com setas, botão aciona com Espaço/Enter)
+  const onControl = t instanceof HTMLButtonElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement;
+  const onSlider = t instanceof HTMLInputElement && t.type === 'range';
+  const current = visibleIds().includes(cursor) ? cursor : null;
+  switch (e.code) {
+    case 'ArrowDown':
+    case 'ArrowUp':
+      if (onSlider || t instanceof HTMLSelectElement) return false;
+      moveCursor(e.code === 'ArrowDown' ? 1 : -1);
+      return true;
+    case 'Home':
+    case 'End':
+      if (onSlider) return false;
+      moveCursor(e.code === 'Home' ? 'first' : 'last');
+      return true;
+    case 'Space':
+      if (onControl || !current) return false;
+      toggle(current);
+      return true;
+    case 'Enter':
+    case 'NumpadEnter':
+    case 'F2':
+      if ((e.code !== 'F2' && onControl) || !current) return false;
+      editSound(current);
+      return true;
+    case 'Delete':
+      if (selected.size) {
+        $('#bulkRemove').click();
+        return true;
+      }
+      if (!current) return false;
+      removeWithConfirm(current);
+      return true;
+  }
+  return false;
+}
+
+async function removeWithConfirm(id) {
+  const sound = state.sounds.find((s) => s.id === id);
+  if (!sound || !confirm(`Remover "${sound.name}"?`)) return;
+  const ids = visibleIds();
+  const next = ids[ids.indexOf(id) + 1] ?? ids[ids.indexOf(id) - 1];
+  applyState(await sb.removeSound(id));
+  if (next) setCursor(next, true); // o cursor fica na linha vizinha, para remover em sequência
+}
+
+list.addEventListener('pointerdown', (e) => {
+  const row = e.target.closest('.row');
+  if (row) setCursor(row.dataset.id, false);
+});
+
+// ---------- modal de adicionar/editar ----------
+
+const MIN_SPAN = 0.1; // trecho mínimo, em segundos
+const editor = {
+  queue: [], // candidatos ({ path, name, url }) ainda não abertos
+  total: 0, // tamanho da fila atual, para o "2 de 5"
+  draft: null, // o som sendo editado; tem id quando já existe
+  duration: 0, // 0 enquanto não decodificou (ou se falhou)
+  peaks: null,
+  load: 0, // descarta decodificações de um rascunho anterior
+  preview: null,
+};
+const ed = {
+  modal: $('#editor'), name: $('#edName'), wave: $('#edWave'), canvas: $('#edWave canvas'),
+  msg: $('#edWave .wave-msg'), playhead: $('#edWave .playhead'), times: $('#edTimes'),
+  key: $('#edKey'), note: $('#edKeyNote'), save: $('#edSave'), skip: $('#edSkip'), preview: $('#edPreview'),
+};
+const editorOpen = () => !ed.modal.hidden;
+
+// escolhidos pelo botão ou soltos na janela: entram na fila do modal
+function enqueue(files) {
+  if (!files.length) {
+    toast('Nenhum arquivo de áudio reconhecido');
+    return;
+  }
+  editor.queue.push(...files);
+  editor.total += files.length;
+  if (!editor.draft) nextInQueue();
+  else renderEditor();
+}
+
+function nextInQueue() {
+  const c = editor.queue.shift();
+  if (!c) {
+    closeEditor();
+    return;
+  }
+  openEditor({ path: c.path, url: c.url, name: c.name, start: 0, end: null, accelerator: null, keyLabel: null, volume: 1 });
+}
+
+function editSound(id) {
+  const s = state.sounds.find((x) => x.id === id);
+  if (!s || editor.draft) return;
+  editor.total = 0;
+  openEditor({ id, url: s.url, name: s.name, start: s.start || 0, end: s.end ?? null, accelerator: s.accelerator, keyLabel: s.keyLabel, volume: s.volume });
+}
+
+async function openEditor(draft) {
+  stopPreview();
+  editor.draft = draft;
+  editor.duration = 0;
+  editor.peaks = null;
+  ed.note.textContent = '';
+  ed.note.classList.remove('warn');
+  ed.name.value = draft.name;
+  ed.msg.textContent = 'Carregando…';
+  ed.modal.hidden = false;
+  renderEditor();
+  ed.name.focus();
+  ed.name.select();
+
+  const load = ++editor.load;
+  try {
+    const bytes = await sb.readAudio(draft.id ? { id: draft.id } : { path: draft.path });
+    if (!bytes) throw new Error('sem bytes');
+    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(data);
+    if (load !== editor.load) return;
+    editor.duration = buffer.duration;
+    editor.peaks = computePeaks(buffer, 800);
+    ed.msg.textContent = '';
+  } catch {
+    if (load !== editor.load) return;
+    ed.msg.textContent = 'Não foi possível ler este áudio';
+  }
+  renderEditor();
+}
+
+function closeEditor() {
+  stopPreview();
+  editor.load++;
+  editor.queue = [];
+  editor.total = 0;
+  editor.draft = null;
+  ed.modal.hidden = true;
+}
+
+// maior amplitude de cada fatia do áudio (todos os canais), de 0 a 1
+function computePeaks(buffer, bins) {
+  const peaks = new Float32Array(bins);
+  const size = buffer.length / bins;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < bins; i++) {
+      let max = peaks[i];
+      const end = Math.min(data.length, Math.floor((i + 1) * size));
+      // pula amostras nas fatias grandes; o pico visual quase não muda
+      const step = Math.max(1, Math.floor(size / 400));
+      for (let j = Math.floor(i * size); j < end; j += step) {
+        const v = Math.abs(data[j]);
+        if (v > max) max = v;
+      }
+      peaks[i] = max;
+    }
+  }
+  const top = Math.max(...peaks) || 1;
+  return peaks.map((p) => p / top);
+}
+
+const trimEnd = () => editor.draft.end ?? editor.duration;
+
+function formatTime(t) {
+  const m = Math.floor(t / 60);
+  const sec = (t - m * 60).toFixed(1).padStart(4, '0');
+  return `${m}:${sec}`;
+}
+
+function renderEditor() {
+  const d = editor.draft;
+  if (!d) return;
+  const editing = !!d.id;
+  const step = editor.total - editor.queue.length;
+  $('#edTitle').textContent = editing ? 'Editar som' : 'Adicionar áudio';
+  $('#edStep').textContent = !editing && editor.total > 1 ? `${step} de ${editor.total}` : '';
+  ed.skip.hidden = editing || editor.total < 2;
+  ed.save.textContent = editing ? 'Salvar' : 'Adicionar';
+
+  ed.key.textContent = d.keyLabel || 'Escolher tecla';
+  ed.key.classList.toggle('unbound', !d.keyLabel);
+  if (!ed.note.textContent) ed.note.textContent = d.keyLabel ? 'Clique para trocar' : 'Clique e aperte a tecla que vai tocar o som';
+
+  const loaded = editor.duration > 0;
+  // som novo que não decodifica provavelmente nem toca; um existente ainda pode ter nome e tecla trocados
+  ed.save.disabled = !d.keyLabel || (!editing && !loaded);
+  ed.save.title = !d.keyLabel ? 'Escolha uma tecla para continuar' : '';
+  ed.wave.classList.toggle('empty', !loaded);
+  ed.preview.disabled = !loaded;
+  $('#edReset').disabled = !loaded || (d.start === 0 && d.end === null);
+  if (!loaded) {
+    ed.times.textContent = '';
+    drawWave();
+    return;
+  }
+  const end = trimEnd();
+  ed.wave.style.setProperty('--start', `${(d.start / editor.duration) * 100}%`);
+  ed.wave.style.setProperty('--end', `${(end / editor.duration) * 100}%`);
+  ed.times.textContent = `${formatTime(d.start)} → ${formatTime(end)} · ${(end - d.start).toFixed(1)} s`;
+  drawWave();
+}
+
+function drawWave() {
+  const canvas = ed.canvas;
+  const dpr = devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr;
+  const h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const peaks = editor.peaks;
+  if (!peaks) return;
+  const css = getComputedStyle(document.documentElement);
+  const on = css.getPropertyValue('--accent');
+  const off = css.getPropertyValue('--track');
+  const bar = 2 * dpr;
+  const gap = 1 * dpr;
+  const start = editor.draft.start / editor.duration;
+  const end = trimEnd() / editor.duration;
+  for (let x = 0; x < w; x += bar + gap) {
+    const ratio = x / w;
+    const peak = peaks[Math.floor(ratio * peaks.length)];
+    const bh = Math.max(2 * dpr, peak * (h - 16 * dpr));
+    ctx.fillStyle = ratio >= start && ratio <= end ? on : off;
+    ctx.fillRect(x, (h - bh) / 2, bar, bh);
+  }
+}
+
+// arrastar na forma de onda move a alça mais próxima do ponteiro
+ed.wave.addEventListener('pointerdown', (e) => {
+  if (!editor.duration) return;
+  const rect = ed.wave.getBoundingClientRect();
+  const timeAt = (x) => Math.min(editor.duration, Math.max(0, ((x - rect.left) / rect.width) * editor.duration));
+  const t = timeAt(e.clientX);
+  const d = editor.draft;
+  const which = Math.abs(t - d.start) <= Math.abs(t - trimEnd()) ? 'start' : 'end';
+  ed.wave.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const time = timeAt(ev.clientX);
+    if (which === 'start') d.start = Math.min(time, trimEnd() - MIN_SPAN);
+    // end colado no fim vira null ("até o fim"), para não cortar por arredondamento
+    else d.end = time >= editor.duration - 0.05 ? null : Math.max(time, d.start + MIN_SPAN);
+    d.start = Math.max(0, d.start);
+    renderEditor();
+  };
+  move(e);
+  ed.wave.addEventListener('pointermove', move);
+  ed.wave.addEventListener('lostpointercapture', () => ed.wave.removeEventListener('pointermove', move), { once: true });
+});
+
+$('#edReset').addEventListener('click', () => {
+  editor.draft.start = 0;
+  editor.draft.end = null;
+  renderEditor();
+});
+
+// pré-escuta do trecho, na mesma saída e volume em que o som vai tocar
+async function togglePreview() {
+  if (editor.preview) {
+    stopPreview();
+    return;
+  }
+  const d = editor.draft;
+  const audio = new Audio(d.url);
+  editor.preview = audio;
+  audio.volume = Math.max(0, Math.min(1, (d.volume ?? 1) * state.masterVolume));
+  audio.currentTime = d.start;
+  await applySink(audio);
+  if (editor.preview !== audio) return;
+  ed.preview.classList.add('playing');
+  ed.preview.querySelector('span').textContent = 'Parar';
+  ed.playhead.hidden = false;
+  audio.addEventListener('ended', stopPreview);
+  audio.play().catch(stopPreview);
+  const tick = () => {
+    if (editor.preview !== audio) return;
+    if (audio.currentTime >= trimEnd()) {
+      stopPreview();
+      return;
+    }
+    ed.playhead.style.left = `${(audio.currentTime / editor.duration) * 100}%`;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function stopPreview() {
+  editor.preview?.pause();
+  editor.preview = null;
+  ed.preview.classList.remove('playing');
+  ed.preview.querySelector('span').textContent = 'Ouvir trecho';
+  ed.playhead.hidden = true;
+}
+
+ed.preview.addEventListener('click', togglePreview);
+ed.key.addEventListener('click', () => captureKey(EDITOR));
+
+function setEditorKey(sc, lost, numLockOff) {
+  const d = editor.draft;
+  if (!d) return;
+  d.accelerator = sc.accelerator;
+  d.keyLabel = sc.keyLabel;
+  let note = '';
+  if (lost.length) note = `Ao salvar, ${sc.keyLabel} ${lost.join(' e ')}`;
+  else if (numLockOff) note = 'Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco';
+  ed.note.textContent = note;
+  ed.note.classList.toggle('warn', !!note);
+  renderEditor();
+}
+
+async function saveEditor() {
+  const d = editor.draft;
+  if (!d || ed.save.disabled) return;
+  ed.save.disabled = true; // Enter duas vezes não adiciona duas vezes; o renderEditor do próximo reabilita
+  stopPreview();
+  const fields = {
+    name: ed.name.value.trim() || 'Sem nome',
+    accelerator: d.accelerator,
+    keyLabel: d.keyLabel,
+  };
+  if (editor.duration) Object.assign(fields, { start: d.start, end: d.end });
+  if (d.id) {
+    applyState(await sb.updateSound(d.id, fields));
+  } else {
+    applyState(await sb.addSound({ path: d.path, ...fields }));
+    if (state.failedHotkeys.includes(d.accelerator)) toast(`${d.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
+  }
+  // segue para o próximo da fila (arquivos soltos durante a edição também entram nela)
+  editor.draft = null;
+  nextInQueue();
+}
+
+$('#editorForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  saveEditor();
+});
+ed.skip.addEventListener('click', nextInQueue);
+$('#edCancel').addEventListener('click', closeEditor);
+$('#edClose').addEventListener('click', closeEditor);
+ed.modal.addEventListener('mousedown', (e) => {
+  if (e.target === ed.modal) closeEditor();
+});
+window.addEventListener('resize', () => editorOpen() && drawWave());
 
 // ---------- teclado ----------
 
@@ -520,16 +1331,48 @@ window.addEventListener('keydown', (e) => {
     finishCapture(e);
     return;
   }
-  if (e.repeat) return;
+  if (!popover.hidden) {
+    popoverKey(e);
+    return;
+  }
+  if (editorOpen()) {
+    // com o modal aberto, as teclas são dele (Enter confirma pelo submit do form)
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      closeEditor();
+    }
+    return;
+  }
+  if (settingsOpen() && e.code === 'Escape' && !(e.target instanceof HTMLSelectElement)) {
+    setView('sounds');
+    return;
+  }
+  // setas repetem (segurar para descer a lista); o resto só na primeira batida
+  if (e.repeat && !/^Arrow(Up|Down)$/.test(e.code)) return;
+  // Ctrl/Cmd+F foca a busca, a não ser que a combinação esteja vinculada a algo
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && !e.altKey && !e.shiftKey && !isBound(eventToShortcut(e).accelerator)) {
+    e.preventDefault();
+    setView('sounds');
+    search.focus();
+    search.select();
+    return;
+  }
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+  // Esc também limpa a seleção (e segue parando os sons)
+  if (e.code === 'Escape' && selected.size) clearSelection();
 
   const sc = eventToShortcut(e);
   if (sc && isBound(sc.accelerator)) {
     e.preventDefault();
+    if (e.repeat) return;
     // Com um teclado escolhido, quem dispara é o onDeviceKey (as teclas dos outros teclados não valem).
     // Com o atalho global registrado, o sistema já dispara a ação, então aqui não roda de novo.
     const handledGlobally = !state.failedHotkeys.includes(sc.accelerator) && !numpadWithoutNumLock(e);
     if (!state.deviceMode && !handledGlobally) trigger(sc.accelerator);
+    return;
+  }
+  if (navKey(e)) {
+    e.preventDefault();
     return;
   }
   if (e.code === 'Escape') stopAll();
@@ -541,16 +1384,46 @@ sb.onState(applyState);
 
 // ---------- topo ----------
 
-$('#add').addEventListener('click', async () => applyState(await sb.pickSounds()));
+const pickFiles = async () => {
+  const files = await sb.pickSounds();
+  if (files.length) enqueue(files);
+};
+$('#add').addEventListener('click', pickFiles);
+$('#emptyAdd').addEventListener('click', pickFiles);
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
+
+// onde o app fica quando a janela fecha muda de sistema para sistema
+$('#closeHint').textContent = isMac
+  ? 'Continuando, as teclas seguem funcionando com a janela fechada; reabra pelo ícone no Dock e saia com Cmd+Q.'
+  : 'Continuando, as teclas seguem funcionando com a janela fechada. O Soundboard fica no ícone perto do relógio, de onde se abre de novo, troca de perfil ou sai.';
+$('#backupExport').addEventListener('click', async () => {
+  const res = await sb.exportBackup();
+  if (res.ok) toast(`Backup salvo em ${res.file}`);
+  else if (res.error) toast(`Não foi possível salvar o backup: ${res.error}`);
+});
+$('#backupRestore').addEventListener('click', () => importProfiles(sb.restoreBackup));
+
+$('#closeToTray').addEventListener('change', async (e) => {
+  applyState(await sb.updateSettings({ closeToTray: e.target.value === 'tray' }));
+});
+
+$('#openAtLogin').addEventListener('change', async (e) => {
+  applyState(await sb.updateSettings({ openAtLogin: e.target.checked }));
+  if (e.target.checked && !state.openAtLogin) toast('O sistema não deixou o Soundboard iniciar sozinho');
+});
 
 $('#exclusive').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ exclusive: e.target.checked }));
 });
 
+function showMaster() {
+  $('#masterValue').textContent = `${Math.round(state.masterVolume * 100)}%`;
+}
+
 $('#master').addEventListener('input', (e) => {
   state.masterVolume = Number(e.target.value);
+  showMaster();
   for (const s of state.sounds) {
     const audio = players.get(s.id);
     if (audio) audio.volume = effectiveVolume(s);
@@ -575,12 +1448,55 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   dragDepth = 0;
   drop.hidden = true;
-  const before = state.sounds.length;
-  const next = await sb.importFiles(e.dataTransfer.files);
-  applyState(next);
-  const added = next.sounds.length - before;
-  if (added === 0) toast('Nenhum arquivo de áudio reconhecido');
+  // .soundboard vira perfil; o resto segue para o modal de áudio
+  const files = [...e.dataTransfer.files];
+  const packs = files.filter((f) => f.name.toLowerCase().endsWith('.soundboard'));
+  for (const pack of packs) await importProfiles(() => sb.importProfileFile(pack));
+  const audio = files.filter((f) => !packs.includes(f));
+  if (audio.length || !packs.length) enqueue(await sb.checkFiles(audio));
 });
+
+// ---------- atualizações ----------
+
+// o main manda o status (updater.js); aqui só vira texto, botões e o aviso na sidebar
+function renderUpdate(u) {
+  const { mode, current, latest, progress, error } = u;
+  const st = u.state;
+  $('#updTitle').textContent = `Soundboard ${current}`;
+  const manualHint = mode === 'manual'
+    ? isMac
+      ? ' No Mac, atualizar é baixar a versão nova e instalar por cima (atualizar sozinho exigiria a assinatura paga da Apple).'
+      : ' Nesta instalação (portátil ou .deb), atualizar é baixar a versão nova e instalar por cima.'
+    : '';
+  const texts = {
+    idle: 'O Soundboard procura versões novas sozinho ao abrir e a cada 6 horas.' + manualHint,
+    checking: 'Procurando versões novas…',
+    none: 'Você está na versão mais nova.' + manualHint,
+    downloading: `Baixando a versão ${latest}… ${progress}%`,
+    ready: `A versão ${latest} já foi baixada. Reinicie para atualizar, ou ela é instalada quando você sair do app.`,
+    available: `A versão ${latest} está disponível. Seus sons, perfis e configurações continuam depois de instalar.`,
+    error: `Não foi possível procurar agora (${error}).`,
+  };
+  $('#updText').textContent = texts[st] || '';
+  const actionLabel = st === 'ready' ? 'Reiniciar e atualizar' : st === 'available' ? `Baixar versão ${latest}` : '';
+  $('#updAction').hidden = !actionLabel;
+  $('#updAction').textContent = actionLabel;
+  $('#updCheck').disabled = ['checking', 'downloading', 'ready'].includes(st);
+
+  const side = st === 'ready' || st === 'available';
+  $('#sideUpdate').hidden = !side;
+  if (side) {
+    $('#sideUpdTitle').textContent = st === 'ready' ? `Versão ${latest} pronta` : `Versão ${latest} disponível`;
+    $('#sideUpdText').textContent = st === 'ready' ? 'Reinicie para atualizar' : 'Baixe e instale por cima';
+    $('#sideUpdAction').textContent = st === 'ready' ? 'Reiniciar' : 'Baixar';
+  }
+}
+
+$('#updCheck').addEventListener('click', async () => renderUpdate(await sb.checkUpdate()));
+$('#updAction').addEventListener('click', () => sb.installUpdate());
+$('#sideUpdAction').addEventListener('click', () => sb.installUpdate());
+sb.onUpdate(renderUpdate);
+sb.getUpdate().then(renderUpdate);
 
 // ---------- toast ----------
 
@@ -590,7 +1506,8 @@ function toast(msg) {
   el.textContent = msg;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 2600);
+  // mensagens longas (importação) ficam mais tempo
+  toastTimer = setTimeout(() => (el.hidden = true), Math.max(2600, msg.length * 55));
 }
 
 sb.getState().then((s) => {
