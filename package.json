@@ -38,6 +38,21 @@
         "deb"
       ],
       "category": "Audio"
+    },
+    "nsis": {
+      "artifactName": "Soundboard-Setup.exe"
+    },
+    "portable": {
+      "artifactName": "Soundboard-Portatil.exe"
+    },
+    "dmg": {
+      "artifactName": "Soundboard-mac-${arch}.dmg"
+    },
+    "appImage": {
+      "artifactName": "Soundboard-linux.AppImage"
+    },
+    "deb": {
+      "artifactName": "soundboard-linux.deb"
     }
   },
   "devDependencies": {

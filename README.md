@@ -2,7 +2,27 @@
 
 Vincule áudios a teclas do teclado e toque com um toque. Roda em **Windows, macOS e Linux** (Electron).
 
-## Usar
+## Baixar
+
+Baixe a versão mais nova (ou veja todas em [Releases](https://github.com/YuriAtzler/soundboard/releases)):
+
+| Sistema | Arquivo |
+| --- | --- |
+| Windows (instalador) | [Soundboard-Setup.exe](https://github.com/YuriAtzler/soundboard/releases/latest/download/Soundboard-Setup.exe) |
+| Windows (portátil, sem instalar) | [Soundboard-Portatil.exe](https://github.com/YuriAtzler/soundboard/releases/latest/download/Soundboard-Portatil.exe) |
+| macOS com chip Apple (M1 ou mais novo) | [Soundboard-mac-arm64.dmg](https://github.com/YuriAtzler/soundboard/releases/latest/download/Soundboard-mac-arm64.dmg) |
+| macOS com Intel | [Soundboard-mac-x64.dmg](https://github.com/YuriAtzler/soundboard/releases/latest/download/Soundboard-mac-x64.dmg) |
+| Linux (AppImage) | [Soundboard-linux.AppImage](https://github.com/YuriAtzler/soundboard/releases/latest/download/Soundboard-linux.AppImage) |
+| Linux (Debian/Ubuntu) | [soundboard-linux.deb](https://github.com/YuriAtzler/soundboard/releases/latest/download/soundboard-linux.deb) |
+
+O app não tem assinatura digital paga, então o sistema avisa na primeira vez:
+
+- **Windows**: na tela azul "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
+- **macOS**: arraste o app para Aplicativos. Se ele disser que o app "está danificado" ou "não pode ser aberto",
+  rode no Terminal `xattr -cr /Applications/Soundboard.app` e abra de novo.
+- **Linux (AppImage)**: dê permissão de execução (`chmod +x Soundboard-linux.AppImage`) e abra.
+
+## Rodar do código
 
 ```bash
 npm install
@@ -25,7 +45,18 @@ npm start
 
 Os áudios são copiados para a pasta de dados do app, então o arquivo original pode ser movido ou apagado.
 
-## Gerar instalador
+## Publicar uma versão
+
+O GitHub Actions (`.github/workflows/release.yml`) gera os instaladores dos três sistemas e cria a Release:
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+A versão do app vem da tag. Em alguns minutos os arquivos aparecem em Releases e os links acima passam a baixar a versão nova.
+
+## Gerar instalador localmente
 
 ```bash
 npm run dist:win    # .exe (instalador + portátil)
