@@ -256,6 +256,7 @@ body:not([data-view="settings"]) .settings-view,
 .setting-text p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .setting-control { flex: none; display: flex; align-items: center; justify-content: flex-end; }
 .setting .theme { width: 280px; }
+.setting-control.buttons { gap: 8px; }
 
 
 /* ---------- topo da área de sons ---------- */

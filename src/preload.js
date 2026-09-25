@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   exportProfile: (id) => ipcRenderer.invoke('profiles:export', id),
   importProfile: () => ipcRenderer.invoke('profiles:import', null),
   importProfileFile: (file) => ipcRenderer.invoke('profiles:import', webUtils.getPathForFile(file)),
+  exportBackup: () => ipcRenderer.invoke('backup:export'),
+  restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   setCapturing: (on) => ipcRenderer.invoke('capture:set', on),
   identifyKeyboard: () => ipcRenderer.invoke('keyboard:identify'),
   cancelIdentify: () => ipcRenderer.invoke('keyboard:cancel'),

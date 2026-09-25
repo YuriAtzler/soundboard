@@ -358,6 +358,23 @@ function importProfiles(manifest, zip) {
   return { created, droppedKeys, missing };
 }
 
+// configurações que vão no backup; saída de áudio e teclado escolhido dependem do computador e ficam
+const BACKUP_SETTINGS = ['masterVolume', 'exclusive', 'theme', 'sort', 'closeToTray', 'stopAccelerator', 'stopKeyLabel'];
+
+function applyBackupSettings(settings) {
+  if (!settings || typeof settings !== 'object') return;
+  const volume = Number(settings.masterVolume);
+  if (Number.isFinite(volume)) config.masterVolume = Math.min(1, Math.max(0, volume));
+  if ('exclusive' in settings) config.exclusive = !!settings.exclusive;
+  if (THEMES.includes(settings.theme)) config.theme = settings.theme;
+  if (SORT_BY.includes(settings.sort?.by)) config.sort = { by: settings.sort.by, dir: settings.sort.dir === 'desc' ? 'desc' : 'asc' };
+  if ('closeToTray' in settings) config.closeToTray = !!settings.closeToTray;
+  if ('stopAccelerator' in settings) {
+    config.stopAccelerator = settings.stopAccelerator || null;
+    config.stopKeyLabel = settings.stopAccelerator ? settings.stopKeyLabel : null;
+  }
+}
+
 const SOUNDBOARD_FILTER = [{ name: 'Soundboard', extensions: ['soundboard'] }];
 const safeFileName = (name) => name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'perfil';
 
@@ -648,6 +665,75 @@ ipcMain.handle('profiles:import', async (_e, filePath) => {
     registerShortcuts();
     return { state: publicState(), imported: created.map((p) => p.name), droppedKeys, missing };
   } catch (err) {
+    return { state: publicState(), error: err.message };
+  }
+});
+
+ipcMain.handle('backup:export', async () => {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Backup de tudo',
+    defaultPath: path.join(app.getPath('documents'), `Soundboard backup ${stamp}.soundboard`),
+    filters: SOUNDBOARD_FILTER,
+  });
+  if (res.canceled || !res.filePath) return { ok: false };
+  try {
+    const settings = Object.fromEntries(BACKUP_SETTINGS.map((k) => [k, config[k]]));
+    writeExport(res.filePath, 'backup', config.profiles, settings);
+    return { ok: true, file: path.basename(res.filePath) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Restaurar pergunta se junta aos perfis atuais ou substitui tudo. Substituir importa primeiro
+// e só depois apaga os perfis antigos, para um arquivo com problema não deixar o app vazio.
+ipcMain.handle('backup:restore', async () => {
+  const pick = await dialog.showOpenDialog(win, { title: 'Restaurar backup', properties: ['openFile'], filters: SOUNDBOARD_FILTER });
+  if (pick.canceled) return { state: publicState() };
+  let parsed;
+  try {
+    parsed = readExport(pick.filePaths[0]);
+  } catch (err) {
+    return { state: publicState(), error: err.message };
+  }
+  const { manifest, zip } = parsed;
+  const count = manifest.profiles.length;
+  const sounds = manifest.profiles.reduce((n, p) => n + (p.sounds?.length || 0), 0);
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: 'Restaurar backup',
+    message: `O arquivo tem ${count} ${count === 1 ? 'perfil' : 'perfis'} e ${sounds} ${sounds === 1 ? 'som' : 'sons'}.`,
+    detail: 'Juntar mantém os seus perfis e acrescenta os do arquivo. Substituir apaga os perfis e sons atuais e aplica as configurações do backup.',
+    buttons: ['Juntar aos atuais', 'Substituir tudo', 'Cancelar'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  if (response === 2) return { state: publicState() };
+  const replace = response === 1;
+  const old = { profiles: config.profiles, ...Object.fromEntries(BACKUP_SETTINGS.map((k) => [k, config[k]])) };
+  try {
+    if (replace) {
+      // as teclas do backup disputam só entre si, não com os perfis que vão sair
+      config.profiles = [];
+      applyBackupSettings(manifest.settings);
+    }
+    const { created, droppedKeys, missing } = importProfiles(manifest, zip);
+    if (replace && !created.length) throw new Error('O backup não tem perfis');
+    if (replace) {
+      for (const p of old.profiles) for (const s of p.sounds) fs.rmSync(path.join(soundsDir, s.file), { force: true });
+    }
+    if (created.length) config.activeProfile = created[0].id;
+    saveConfig();
+    registerShortcuts();
+    return { state: publicState(), imported: created.map((p) => p.name), droppedKeys, missing, replaced: replace };
+  } catch (err) {
+    if (replace) {
+      // desfaz: apaga o que chegou a ser copiado e volta perfis e configurações
+      for (const p of config.profiles) for (const s of p.sounds) fs.rmSync(path.join(soundsDir, s.file), { force: true });
+      Object.assign(config, old);
+    }
     return { state: publicState(), error: err.message };
   }
 });

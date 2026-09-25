@@ -533,6 +533,7 @@ async function importProfiles(request) {
   if (!names.length) return;
   setView('sounds');
   let msg = names.length === 1 ? `Perfil "${names[0]}" importado` : `${names.length} perfis importados`;
+  if (res.replaced) msg = `Backup restaurado: ${names.length === 1 ? '1 perfil' : `${names.length} perfis`}`;
   if (res.missing) msg += ` · ${res.missing} ${res.missing === 1 ? 'áudio não veio' : 'áudios não vieram'} no arquivo`;
   if (res.droppedKeys) msg += ` · ${res.droppedKeys} ${res.droppedKeys === 1 ? 'tecla já tinha dono e ficou' : 'teclas já tinham dono e ficaram'} de fora`;
   toast(msg);
@@ -1396,6 +1397,13 @@ $('#stopKey').addEventListener('click', () => captureKey(STOP));
 $('#closeHint').textContent = isMac
   ? 'Continuando, as teclas seguem funcionando com a janela fechada; reabra pelo ícone no Dock e saia com Cmd+Q.'
   : 'Continuando, as teclas seguem funcionando com a janela fechada. O Soundboard fica no ícone perto do relógio, de onde se abre de novo, troca de perfil ou sai.';
+$('#backupExport').addEventListener('click', async () => {
+  const res = await sb.exportBackup();
+  if (res.ok) toast(`Backup salvo em ${res.file}`);
+  else if (res.error) toast(`Não foi possível salvar o backup: ${res.error}`);
+});
+$('#backupRestore').addEventListener('click', () => importProfiles(sb.restoreBackup));
+
 $('#closeToTray').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ closeToTray: e.target.value === 'tray' }));
 });
