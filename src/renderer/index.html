@@ -28,6 +28,13 @@
       </section>
 
       <nav class="side-foot">
+        <div id="sideUpdate" class="side-update" hidden>
+          <div class="side-update-text">
+            <strong id="sideUpdTitle"></strong>
+            <span id="sideUpdText"></span>
+          </div>
+          <button id="sideUpdAction" class="btn small primary"></button>
+        </div>
         <div class="theme side-theme" role="group" aria-label="Tema">
           <button data-theme="system" title="Tema do sistema">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
@@ -196,6 +203,18 @@
             <div class="setting-control buttons">
               <button id="backupExport" class="btn small">Exportar tudo…</button>
               <button id="backupRestore" class="btn small">Restaurar…</button>
+            </div>
+          </div>
+
+          <h3 class="group-title">Atualizações</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <strong id="updTitle">Soundboard</strong>
+              <p id="updText"></p>
+            </div>
+            <div class="setting-control buttons">
+              <button id="updAction" class="btn small primary" hidden></button>
+              <button id="updCheck" class="btn small">Procurar atualizações</button>
             </div>
           </div>
 

@@ -1456,6 +1456,48 @@ window.addEventListener('drop', async (e) => {
   if (audio.length || !packs.length) enqueue(await sb.checkFiles(audio));
 });
 
+// ---------- atualizações ----------
+
+// o main manda o status (updater.js); aqui só vira texto, botões e o aviso na sidebar
+function renderUpdate(u) {
+  const { mode, current, latest, progress, error } = u;
+  const st = u.state;
+  $('#updTitle').textContent = `Soundboard ${current}`;
+  const manualHint = mode === 'manual'
+    ? isMac
+      ? ' No Mac, atualizar é baixar a versão nova e instalar por cima (atualizar sozinho exigiria a assinatura paga da Apple).'
+      : ' Nesta instalação (portátil ou .deb), atualizar é baixar a versão nova e instalar por cima.'
+    : '';
+  const texts = {
+    idle: 'O Soundboard procura versões novas sozinho ao abrir e a cada 6 horas.' + manualHint,
+    checking: 'Procurando versões novas…',
+    none: 'Você está na versão mais nova.' + manualHint,
+    downloading: `Baixando a versão ${latest}… ${progress}%`,
+    ready: `A versão ${latest} já foi baixada. Reinicie para atualizar, ou ela é instalada quando você sair do app.`,
+    available: `A versão ${latest} está disponível. Seus sons, perfis e configurações continuam depois de instalar.`,
+    error: `Não foi possível procurar agora (${error}).`,
+  };
+  $('#updText').textContent = texts[st] || '';
+  const actionLabel = st === 'ready' ? 'Reiniciar e atualizar' : st === 'available' ? `Baixar versão ${latest}` : '';
+  $('#updAction').hidden = !actionLabel;
+  $('#updAction').textContent = actionLabel;
+  $('#updCheck').disabled = ['checking', 'downloading', 'ready'].includes(st);
+
+  const side = st === 'ready' || st === 'available';
+  $('#sideUpdate').hidden = !side;
+  if (side) {
+    $('#sideUpdTitle').textContent = st === 'ready' ? `Versão ${latest} pronta` : `Versão ${latest} disponível`;
+    $('#sideUpdText').textContent = st === 'ready' ? 'Reinicie para atualizar' : 'Baixe e instale por cima';
+    $('#sideUpdAction').textContent = st === 'ready' ? 'Reiniciar' : 'Baixar';
+  }
+}
+
+$('#updCheck').addEventListener('click', async () => renderUpdate(await sb.checkUpdate()));
+$('#updAction').addEventListener('click', () => sb.installUpdate());
+$('#sideUpdAction').addEventListener('click', () => sb.installUpdate());
+sb.onUpdate(renderUpdate);
+sb.getUpdate().then(renderUpdate);
+
 // ---------- toast ----------
 
 let toastTimer;

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 const { writeZip, readZip } = require('./archive');
+const updater = require('./updater');
 
 const THEMES = ['system', 'light', 'dark'];
 const SORT_BY = ['added', 'name', 'key'];
@@ -738,6 +739,17 @@ ipcMain.handle('backup:restore', async () => {
   }
 });
 
+ipcMain.handle('update:get', () => updater.getStatus());
+ipcMain.handle('update:check', () => {
+  updater.check();
+  return updater.getStatus();
+});
+ipcMain.handle('update:install', () => {
+  updater.install(() => {
+    quitting = true;
+  });
+});
+
 ipcMain.handle('profiles:switch', (_e, id) => {
   switchProfile(id);
   return publicState();
@@ -801,6 +813,7 @@ app.whenReady().then(() => {
   openAtLogin = readOpenAtLogin();
   createWindow();
   createTray();
+  updater.start((status) => win?.webContents.send('update', status));
   syncKeyboard();
   registerShortcuts();
   app.on('activate', () => showWindow());

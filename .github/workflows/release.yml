@@ -44,11 +44,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: instaladores-${{ runner.os }}
+          # latest*.yml e .blockmap: o electron-updater lê a versão nova e baixa só o que mudou
           path: |
             dist/*.exe
             dist/*.dmg
             dist/*.AppImage
             dist/*.deb
+            dist/latest*.yml
+            dist/*.blockmap
           if-no-files-found: error
 
   release:
