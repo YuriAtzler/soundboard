@@ -51,7 +51,8 @@ const unused = baseKeys.filter((k) => !used.has(k) && !dynamic.test(k));
 // ---------- 3. texto fixo no código ----------
 const ACCENT = /[áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]/;
 for (const file of jsFiles) {
-  read(file).split('\n').forEach((line, i) => {
+  // \r?\n: no runner Windows o checkout vem com CRLF, e o . da regex dos comentários não pega o \r
+  read(file).split(/\r?\n/).forEach((line, i) => {
     // tira comentários de linha (o // de uma URL dentro de string vem depois de ':' e não conta)
     const code = line.replace(/(^|[^:'"`])\/\/.*$/, '$1');
     if (/^\s*\*/.test(code)) return; // linhas de comentário em bloco
