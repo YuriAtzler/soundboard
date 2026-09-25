@@ -270,6 +270,7 @@ function renderList() {
     btn.classList.toggle('desc', active && state.sort.dir === 'desc');
   }
   renderSelection();
+  if (cursor && !visibleIds().includes(cursor)) setCursor(null, false);
 }
 
 // ---------- seleção múltipla ----------
@@ -766,6 +767,87 @@ async function finishCapture(e) {
   }
 }
 
+// ---------- navegação pelo teclado ----------
+
+let cursor = null; // id da linha em foco
+
+// o destaque só aparece navegando pelo teclado; o clique só move o cursor
+function setCursor(id, fromKeyboard) {
+  cursor = id;
+  list.classList.toggle('kbd', fromKeyboard);
+  for (const [rid, row] of rows) row.classList.toggle('cursor', rid === id);
+  if (fromKeyboard) rows.get(id)?.scrollIntoView({ block: 'nearest' });
+}
+
+function moveCursor(to) {
+  const ids = visibleIds();
+  if (!ids.length) return;
+  const i = ids.indexOf(cursor);
+  let next;
+  if (to === 'first') next = 0;
+  else if (to === 'last') next = ids.length - 1;
+  else if (i < 0 || !list.classList.contains('kbd')) next = i < 0 ? (to > 0 ? 0 : ids.length - 1) : i; // primeira seta só mostra o cursor
+  else next = Math.min(ids.length - 1, Math.max(0, i + to));
+  // tira o foco de um botão da linha, senão o Espaço/Enter seguinte acionaria o botão
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+  setCursor(ids[next], true);
+}
+
+// setas, Home/End, Espaço, Enter/F2 e Delete na tabela; true se a tecla foi tratada
+function navKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || !state.sounds.length) return false;
+  const t = e.target;
+  // em cima de um controle, a tecla é dele (slider anda com setas, botão aciona com Espaço/Enter)
+  const onControl = t instanceof HTMLButtonElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement;
+  const onSlider = t instanceof HTMLInputElement && t.type === 'range';
+  const current = visibleIds().includes(cursor) ? cursor : null;
+  switch (e.code) {
+    case 'ArrowDown':
+    case 'ArrowUp':
+      if (onSlider || t instanceof HTMLSelectElement) return false;
+      moveCursor(e.code === 'ArrowDown' ? 1 : -1);
+      return true;
+    case 'Home':
+    case 'End':
+      if (onSlider) return false;
+      moveCursor(e.code === 'Home' ? 'first' : 'last');
+      return true;
+    case 'Space':
+      if (onControl || !current) return false;
+      toggle(current);
+      return true;
+    case 'Enter':
+    case 'NumpadEnter':
+    case 'F2':
+      if ((e.code !== 'F2' && onControl) || !current) return false;
+      editSound(current);
+      return true;
+    case 'Delete':
+      if (selected.size) {
+        $('#bulkRemove').click();
+        return true;
+      }
+      if (!current) return false;
+      removeWithConfirm(current);
+      return true;
+  }
+  return false;
+}
+
+async function removeWithConfirm(id) {
+  const sound = state.sounds.find((s) => s.id === id);
+  if (!sound || !confirm(`Remover "${sound.name}"?`)) return;
+  const ids = visibleIds();
+  const next = ids[ids.indexOf(id) + 1] ?? ids[ids.indexOf(id) - 1];
+  applyState(await sb.removeSound(id));
+  if (next) setCursor(next, true); // o cursor fica na linha vizinha, para remover em sequência
+}
+
+list.addEventListener('pointerdown', (e) => {
+  const row = e.target.closest('.row');
+  if (row) setCursor(row.dataset.id, false);
+});
+
 // ---------- modal de adicionar/editar ----------
 
 const MIN_SPAN = 0.1; // trecho mínimo, em segundos
@@ -1106,7 +1188,8 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (e.repeat) return;
+  // setas repetem (segurar para descer a lista); o resto só na primeira batida
+  if (e.repeat && !/^Arrow(Up|Down)$/.test(e.code)) return;
   // Ctrl/Cmd+F foca a busca, a não ser que a combinação esteja vinculada a algo
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && !e.altKey && !e.shiftKey && !isBound(eventToShortcut(e).accelerator)) {
     e.preventDefault();
@@ -1121,10 +1204,15 @@ window.addEventListener('keydown', (e) => {
   const sc = eventToShortcut(e);
   if (sc && isBound(sc.accelerator)) {
     e.preventDefault();
+    if (e.repeat) return;
     // Com um teclado escolhido, quem dispara é o onDeviceKey (as teclas dos outros teclados não valem).
     // Com o atalho global registrado, o sistema já dispara a ação, então aqui não roda de novo.
     const handledGlobally = !state.failedHotkeys.includes(sc.accelerator) && !numpadWithoutNumLock(e);
     if (!state.deviceMode && !handledGlobally) trigger(sc.accelerator);
+    return;
+  }
+  if (navKey(e)) {
+    e.preventDefault();
     return;
   }
   if (e.code === 'Escape') stopAll();
