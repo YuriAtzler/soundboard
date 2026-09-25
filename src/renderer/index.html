@@ -116,6 +116,7 @@
         </section>
         <section id="list" class="table" role="table" aria-label="Sons">
           <div class="thead" role="row">
+            <span role="columnheader"><input id="selectAll" type="checkbox" class="check" title="Selecionar todos" /></span>
             <span role="columnheader"></span>
             <span role="columnheader"><button class="sort" data-sort="name" title="Ordenar por nome">Nome <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button></span>
             <span role="columnheader"><button class="sort" data-sort="key" title="Ordenar por tecla">Tecla <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button></span>
@@ -127,6 +128,22 @@
         </section>
       </main>
     </div>
+  </div>
+
+  <div id="bulk" class="bulk" hidden>
+    <span id="bulkCount" class="bulk-count"></span>
+    <label class="bulk-vol" title="Volume de todos os selecionados">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+      <input id="bulkVol" type="range" min="0" max="1" step="0.01" />
+      <span id="bulkVolValue" class="vol-value"></span>
+    </label>
+    <button id="bulkRemove" class="btn small danger">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+      Remover
+    </button>
+    <button id="bulkClear" class="side-add" title="Limpar seleção (Esc)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
   </div>
 
   <div id="drop" class="drop" hidden>
@@ -214,6 +231,7 @@
   <template id="rowTpl">
     <div class="row" role="row">
       <div class="progress"><span></span></div>
+      <div class="cell" role="cell"><input type="checkbox" class="check select" title="Selecionar (Shift+clique seleciona um intervalo)" /></div>
       <div class="cell" role="cell">
         <button class="play" title="Tocar">
           <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>

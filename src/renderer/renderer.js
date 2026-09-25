@@ -269,7 +269,90 @@ function renderList() {
     btn.classList.toggle('asc', active && state.sort.dir === 'asc');
     btn.classList.toggle('desc', active && state.sort.dir === 'desc');
   }
+  renderSelection();
 }
+
+// ---------- seleção múltipla ----------
+
+const selected = new Set(); // ids dos sons marcados
+let selectAnchor = null; // última linha marcada, de onde parte o Shift+clique
+const bulkVol = $('#bulkVol');
+
+// linhas na ordem em que aparecem (ordenação e busca aplicadas)
+const visibleIds = () => [...grid.children].filter((r) => !r.hidden).map((r) => r.dataset.id);
+
+function renderSelection() {
+  const visible = visibleIds();
+  // som removido, de outro perfil ou escondido pela busca sai da seleção: as ações valem só para o que se vê
+  for (const id of [...selected]) if (!visible.includes(id)) selected.delete(id);
+  for (const [id, row] of rows) {
+    const on = selected.has(id);
+    row.classList.toggle('selected', on);
+    row.querySelector('.select').checked = on;
+  }
+  const all = $('#selectAll');
+  all.checked = visible.length > 0 && selected.size === visible.length;
+  all.indeterminate = selected.size > 0 && !all.checked;
+  list.classList.toggle('selecting', selected.size > 0);
+  $('#bulk').hidden = !selected.size;
+  if (!selected.size) return;
+  $('#bulkCount').textContent = selected.size === 1 ? '1 selecionado' : `${selected.size} selecionados`;
+  if (document.activeElement !== bulkVol) {
+    const volumes = state.sounds.filter((s) => selected.has(s.id)).map((s) => s.volume);
+    bulkVol.value = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+    paintRange(bulkVol);
+    $('#bulkVolValue').textContent = `${Math.round(bulkVol.value * 100)}%`;
+  }
+}
+
+function selectRow(id, on, range) {
+  const ids = visibleIds();
+  if (range && ids.includes(selectAnchor)) {
+    const [a, b] = [ids.indexOf(selectAnchor), ids.indexOf(id)].sort((x, y) => x - y);
+    for (const x of ids.slice(a, b + 1)) on ? selected.add(x) : selected.delete(x);
+  } else if (on) selected.add(id);
+  else selected.delete(id);
+  selectAnchor = id;
+  renderSelection();
+}
+
+function clearSelection() {
+  selected.clear();
+  renderSelection();
+}
+
+$('#selectAll').addEventListener('change', (e) => {
+  if (e.target.checked) visibleIds().forEach((id) => selected.add(id));
+  else selected.clear();
+  renderSelection();
+});
+
+bulkVol.addEventListener('input', () => {
+  const volume = Number(bulkVol.value);
+  $('#bulkVolValue').textContent = `${Math.round(volume * 100)}%`;
+  for (const sound of state.sounds) {
+    if (!selected.has(sound.id)) continue;
+    sound.volume = volume;
+    const row = rows.get(sound.id);
+    const vol = row.querySelector('.vol');
+    vol.value = volume;
+    paintRange(vol);
+    showVolume(row, volume);
+    const audio = players.get(sound.id);
+    if (audio) audio.volume = effectiveVolume(sound);
+  }
+});
+bulkVol.addEventListener('change', async () => {
+  applyState(await sb.setVolumes([...selected], Number(bulkVol.value)));
+});
+
+$('#bulkRemove').addEventListener('click', async () => {
+  const n = selected.size;
+  if (!confirm(n === 1 ? 'Remover o som selecionado?' : `Remover os ${n} sons selecionados?`)) return;
+  applyState(await sb.removeSounds([...selected]));
+  toast(n === 1 ? 'Som removido' : `${n} sons removidos`);
+});
+$('#bulkClear').addEventListener('click', clearSelection);
 
 search.addEventListener('input', renderList);
 search.addEventListener('keydown', (e) => {
@@ -297,6 +380,7 @@ function buildRow(id) {
 
   row.querySelector('.keycap').addEventListener('click', () => captureKey(id));
   row.querySelector('.play').addEventListener('click', () => toggle(id));
+  row.querySelector('.select').addEventListener('click', (e) => selectRow(id, e.target.checked, e.shiftKey));
   row.querySelector('.remove').addEventListener('click', async () => {
     applyState(await sb.removeSound(id));
   });
@@ -1031,6 +1115,8 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+  // Esc também limpa a seleção (e segue parando os sons)
+  if (e.code === 'Escape' && selected.size) clearSelection();
 
   const sc = eventToShortcut(e);
   if (sc && isBound(sc.accelerator)) {

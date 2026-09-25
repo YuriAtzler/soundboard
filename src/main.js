@@ -338,15 +338,31 @@ ipcMain.handle('sounds:update', (_e, id, patch) => {
   return publicState();
 });
 
-ipcMain.handle('sounds:remove', (_e, id) => {
+// remove sons do perfil ativo (um ou vários, da seleção múltipla)
+function removeSounds(ids) {
   const profile = activeProfile();
-  const s = profile.sounds.find((x) => x.id === id);
-  if (s) {
-    fs.rmSync(path.join(soundsDir, s.file), { force: true });
-    profile.sounds = profile.sounds.filter((x) => x.id !== id);
-    saveConfig();
-    registerShortcuts();
-  }
+  const gone = profile.sounds.filter((x) => ids.includes(x.id));
+  if (!gone.length) return;
+  for (const s of gone) fs.rmSync(path.join(soundsDir, s.file), { force: true });
+  profile.sounds = profile.sounds.filter((x) => !ids.includes(x.id));
+  saveConfig();
+  registerShortcuts();
+}
+
+ipcMain.handle('sounds:remove', (_e, id) => {
+  removeSounds([id]);
+  return publicState();
+});
+
+ipcMain.handle('sounds:removeMany', (_e, ids) => {
+  removeSounds(ids);
+  return publicState();
+});
+
+// ajuste em lote: por enquanto só o volume
+ipcMain.handle('sounds:volumeMany', (_e, ids, volume) => {
+  for (const s of activeProfile().sounds) if (ids.includes(s.id)) s.volume = volume;
+  saveConfig();
   return publicState();
 });
 

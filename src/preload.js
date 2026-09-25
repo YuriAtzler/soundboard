@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   addSound: (draft) => ipcRenderer.invoke('sounds:add', draft),
   updateSound: (id, patch) => ipcRenderer.invoke('sounds:update', id, patch),
   removeSound: (id) => ipcRenderer.invoke('sounds:remove', id),
+  removeSounds: (ids) => ipcRenderer.invoke('sounds:removeMany', ids),
+  setVolumes: (ids, volume) => ipcRenderer.invoke('sounds:volumeMany', ids, volume),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   createProfile: (name) => ipcRenderer.invoke('profiles:create', name),
   updateProfile: (id, patch) => ipcRenderer.invoke('profiles:update', id, patch),
