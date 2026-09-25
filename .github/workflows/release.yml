@@ -38,7 +38,8 @@ jobs:
       - name: Build
         run: npx electron-builder ${{ matrix.target }} --publish never
         env:
-          # sem certificado: não procura identidade de assinatura no Mac
+          # sem certificado: não procura identidade no Mac. O app é assinado ad-hoc
+          # (mac.identity "-" no package.json); sem isso o arm64 abre como "danificado".
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:

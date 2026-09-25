@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -8,11 +8,14 @@ const { KeyboardWatcher } = require('./keyboard');
 const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm', 'opus'];
 
 let win;
+let tray;
+// fechar a janela só a esconde, para as teclas continuarem tocando; sair de verdade é
+// pelo menu da bandeja (Windows/Linux) ou Cmd+Q (Mac)
+let quitting = false;
 let dataDir;
 let soundsDir;
 let configPath;
 let config = {
-  globalHotkeys: false,
   masterVolume: 1,
   exclusive: false,
   outputDevice: 'default',
@@ -100,6 +103,7 @@ function loadConfig() {
     delete config.sounds;
     saveConfig();
   }
+  delete config.globalHotkeys; // era uma chave; hoje os atalhos globais estão sempre ligados
   if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
   if (!activeProfile()) config.activeProfile = config.profiles[0].id;
   // descarta entradas cujo arquivo sumiu
@@ -135,7 +139,7 @@ function registerShortcuts() {
   globalShortcut.unregisterAll();
   const failed = [];
   failedHotkeys = failed;
-  if (!config.globalHotkeys || capturing || deviceMode()) return;
+  if (capturing || deviceMode()) return;
   const register = (accelerator, fn) => {
     if (!accelerator) return;
     try {
@@ -225,6 +229,31 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // o áudio toca no renderer, então a janela não pode ser destruída
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    win.hide();
+  });
+}
+
+function showWindow() {
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// no Mac o ícone do Dock já reabre a janela (activate)
+function createTray() {
+  if (process.platform === 'darwin') return;
+  tray = new Tray(path.join(__dirname, 'assets', 'tray.png'));
+  tray.setToolTip('Soundboard');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir Soundboard', click: showWindow },
+    { type: 'separator' },
+    { label: 'Sair', click: () => app.quit() },
+  ]));
+  tray.on('click', showWindow);
 }
 
 ipcMain.handle('state:get', () => publicState());
@@ -325,7 +354,6 @@ ipcMain.handle('keyboard:cancel', () => {
 });
 
 ipcMain.handle('settings:update', (_e, patch) => {
-  if ('globalHotkeys' in patch) config.globalHotkeys = !!patch.globalHotkeys;
   if ('masterVolume' in patch) config.masterVolume = patch.masterVolume;
   if ('exclusive' in patch) config.exclusive = !!patch.exclusive;
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
@@ -338,25 +366,28 @@ ipcMain.handle('settings:update', (_e, patch) => {
   }
   saveConfig();
   if ('inputDevice' in patch) syncKeyboard();
-  if ('globalHotkeys' in patch || 'stopAccelerator' in patch || 'inputDevice' in patch) registerShortcuts();
+  if ('stopAccelerator' in patch || 'inputDevice' in patch) registerShortcuts();
   return publicState();
 });
+
+// uma instância só: abrir de novo mostra a janela escondida, em vez de disputar as teclas
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => win && showWindow());
 
 app.whenReady().then(() => {
   loadConfig();
   createWindow();
+  createTray();
   syncKeyboard();
   registerShortcuts();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on('activate', () => showWindow());
+});
+
+app.on('before-quit', () => {
+  quitting = true;
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   keyboard.stop();
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
 });
