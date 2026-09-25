@@ -1224,7 +1224,12 @@ sb.onState(applyState);
 
 // ---------- topo ----------
 
-$('#add').addEventListener('click', async () => enqueue(await sb.pickSounds()));
+const pickFiles = async () => {
+  const files = await sb.pickSounds();
+  if (files.length) enqueue(files);
+};
+$('#add').addEventListener('click', pickFiles);
+$('#emptyAdd').addEventListener('click', pickFiles);
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
 
