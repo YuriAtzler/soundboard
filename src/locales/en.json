@@ -167,6 +167,7 @@
   "toast.unsupportedKey": "That key isn't supported",
   "toast.numlock": "Turn NumLock on: with it off, the numpad only works with the app focused",
   "toast.keyInUse": "{key} is already used by the system — it only works with the app focused",
+  "toast.focusOnly": "{key} only works with the app focused: the system has no global shortcut for this key",
   "row.confirmRemove": "Remove \"{name}\"?",
   "toast.noAudio": "No audio files recognized",
   "editor.loading": "Loading…",
