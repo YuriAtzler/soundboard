@@ -167,6 +167,7 @@
   "toast.unsupportedKey": "Essa tecla não é suportada",
   "toast.numlock": "Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco",
   "toast.keyInUse": "{key} já está em uso pelo sistema — funciona só com o app em foco",
+  "toast.focusOnly": "{key} só funciona com o app em foco: o sistema não tem atalho global para essa tecla",
   "row.confirmRemove": "Remover \"{name}\"?",
   "toast.noAudio": "Nenhum arquivo de áudio reconhecido",
   "editor.loading": "Carregando…",

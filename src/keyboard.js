@@ -19,7 +19,7 @@ const SCAN = {
   0x47: 'Numpad7', 0x48: 'Numpad8', 0x49: 'Numpad9', 0x4a: 'NumpadSubtract',
   0x4b: 'Numpad4', 0x4c: 'Numpad5', 0x4d: 'Numpad6', 0x4e: 'NumpadAdd',
   0x4f: 'Numpad1', 0x50: 'Numpad2', 0x51: 'Numpad3', 0x52: 'Numpad0', 0x53: 'NumpadDecimal',
-  0x57: 'F11', 0x58: 'F12', 0x76: 'F24',
+  0x57: 'F11', 0x58: 'F12', 0x76: 'F24', 0x7e: 'NumpadComma',
 };
 'QWERTYUIOP'.split('').forEach((k, i) => (SCAN[0x10 + i] = 'Key' + k));
 'ASDFGHJKL'.split('').forEach((k, i) => (SCAN[0x1e + i] = 'Key' + k));

@@ -59,6 +59,8 @@ const CODE_MAP = {
   Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backquote: '`',
   NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult',
   NumpadDivide: 'numdiv', NumpadDecimal: 'numdec', NumpadEnter: 'Enter',
+  // o "." do numpad ABNT2 (e de alguns teclados no Mac); o Electron não tem accelerator próprio para ele
+  NumpadComma: 'numdec',
 };
 
 const LABEL_MAP = {
@@ -99,6 +101,19 @@ const MODIFIER_CODES = /^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/;
 // então o atalho global num1..num9 não dispara; nesse caso quem trata é o keydown local.
 function numpadWithoutNumLock(e) {
   return sb.platform === 'win32' && /^Numpad\d$/.test(e.code) && !e.getModifierState('NumLock');
+}
+
+// O atalho global numdec registra a tecla decimal padrão, e não o NumpadComma, que é outra tecla
+// física; então o NumpadComma também só funciona pelo keydown local.
+function focusOnlyKey(e) {
+  return numpadWithoutNumLock(e) || e.code === 'NumpadComma';
+}
+
+// aviso da captura para as teclas que só funcionam com o app em foco
+function captureWarning(e, sc) {
+  if (numpadWithoutNumLock(e)) return t('toast.numlock');
+  if (e.code === 'NumpadComma') return t('toast.focusOnly', { key: sc.keyLabel });
+  return '';
 }
 
 // Estado do NumLock, para avisar das teclas numN (só dá para ler num evento de teclado ou mouse).
@@ -937,7 +952,7 @@ async function finishCapture(e) {
   if (id === EDITOR) {
     // no modal a tecla só vale ao salvar
     applyState(await endCapture());
-    setEditorKey(sc, lost, numpadWithoutNumLock(e));
+    setEditorKey(sc, lost, state.deviceMode ? '' : captureWarning(e, sc));
     return;
   }
   await endCapture();
@@ -945,8 +960,9 @@ async function finishCapture(e) {
   const next = await bindKey(id, sc);
   applyState(next);
   if (lost.length) toast(t('conflict.toast', { key: sc.keyLabel, changes: joinList(lost) }));
-  if (numpadWithoutNumLock(e) && !next.deviceMode) {
-    toast(t('toast.numlock'));
+  const warning = next.deviceMode ? '' : captureWarning(e, sc);
+  if (warning) {
+    toast(warning);
   } else if (next.failedHotkeys.includes(sc.accelerator)) {
     toast(t('toast.keyInUse', { key: sc.keyLabel }));
   }
@@ -1281,14 +1297,14 @@ function stopPreview() {
 ed.preview.addEventListener('click', togglePreview);
 ed.key.addEventListener('click', () => captureKey(EDITOR));
 
-function setEditorKey(sc, lost, numLockOff) {
+function setEditorKey(sc, lost, warning) {
   const d = editor.draft;
   if (!d) return;
   d.accelerator = sc.accelerator;
   d.keyLabel = sc.keyLabel;
   let note = '';
   if (lost.length) note = t('editor.onSave', { key: sc.keyLabel, changes: joinList(lost) });
-  else if (numLockOff) note = t('toast.numlock');
+  else if (warning) note = warning;
   ed.note.textContent = note;
   ed.note.classList.toggle('warn', !!note);
   renderEditor();
@@ -1401,7 +1417,7 @@ window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     // Com um teclado escolhido, quem dispara é o onDeviceKey (as teclas dos outros teclados não valem).
     // Com o atalho global registrado, o sistema já dispara a ação, então aqui não roda de novo.
-    const handledGlobally = !state.failedHotkeys.includes(sc.accelerator) && !numpadWithoutNumLock(e);
+    const handledGlobally = !state.failedHotkeys.includes(sc.accelerator) && !focusOnlyKey(e);
     if (!state.deviceMode && !handledGlobally) trigger(sc.accelerator);
     return;
   }
