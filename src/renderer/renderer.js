@@ -9,9 +9,38 @@ const list = $('#list');
 const tabTpl = $('#tabTpl');
 const tabsEl = $('#tabs');
 
+// ---------- idioma ----------
+
+// o dicionário vem do main (i18n.js), já completado pelo inglês
+let dict = sb.i18n.dict;
+let language = sb.i18n.language;
+
+function t(key, vars = {}) {
+  let text = dict[key] ?? key;
+  if (text && typeof text === 'object') text = vars.n === 1 ? text.one : text.other;
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+}
+
+// preenche o que o HTML marca com data-i18n*; os -html vêm só dos dicionários, nunca do usuário
+function applyI18n(root) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
+  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+  for (const el of root.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
+}
+
+function applyLanguage() {
+  document.documentElement.lang = language;
+  applyI18n(document);
+  // os templates também, senão as linhas e perfis novos nasceriam no idioma anterior
+  for (const template of document.querySelectorAll('template')) applyI18n(template.content);
+}
+applyLanguage();
+
 let state = {
   sounds: [], profiles: [], activeProfile: null, masterVolume: 1,
-  exclusive: false, outputDevice: 'default', theme: 'system', sort: { by: 'added', dir: 'asc' }, inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
+  exclusive: false, outputDevice: 'default', theme: 'system', language: 'system', sort: { by: 'added', dir: 'asc' }, inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
 const rows = new Map(); // id -> linha da tabela
@@ -199,6 +228,7 @@ function applyState(next) {
   applyTheme();
   $('#exclusive').checked = state.exclusive;
   $('#closeToTray').value = state.closeToTray === false ? 'quit' : 'tray';
+  $('#language').value = state.language || 'system';
   $('#openAtLogin').checked = !!state.openAtLogin;
   $('#openAtLogin').disabled = !state.canOpenAtLogin;
   $('#loginWrap').classList.toggle('disabled', !state.canOpenAtLogin);
@@ -243,7 +273,7 @@ function applyState(next) {
 const search = $('#search');
 // minúsculas e sem acento, para "acao" achar "Ação"
 const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+let collator = new Intl.Collator(language, { numeric: true, sensitivity: 'base' });
 
 function sortedSounds() {
   const { by, dir } = state.sort;
@@ -755,7 +785,6 @@ navigator.mediaDevices.addEventListener('devicechange', refreshOutputs);
 
 const IDENTIFY = '__identify';
 let identifying = false;
-const captureHint = $('#captureHint').innerHTML;
 
 function renderKeyboard() {
   $('#keyboardWrap').hidden = sb.platform !== 'win32';
@@ -776,7 +805,7 @@ async function identifyKeyboard() {
   const next = await sb.identifyKeyboard();
   identifying = false;
   $('#capture').hidden = true;
-  $('#captureHint').innerHTML = captureHint;
+  $('#captureHint').innerHTML = t('capture.hint');
   applyState(next);
   if (next.keyboardError) toast('Não foi possível ler os teclados; usando qualquer teclado');
   else if (next.inputDevice && next.inputDevice.id !== before) toast(`Só "${next.inputDevice.label}" dispara os sons agora`);
@@ -830,7 +859,7 @@ function captureKey(id) {
   $('#captureTitle').textContent = title;
   $('#captureKey').textContent = '?';
   $('#captureHint').innerHTML = canUnbind(id)
-    ? captureHint
+    ? t('capture.hint')
     : 'Pode combinar com Ctrl, Alt, Shift ou Cmd.<br/><kbd>Esc</kbd> cancela';
   $('#capture').hidden = false;
   // desliga os atalhos globais para a tecla chegar aqui mesmo se já estiver registrada
@@ -1404,6 +1433,20 @@ $('#backupExport').addEventListener('click', async () => {
 });
 $('#backupRestore').addEventListener('click', () => importProfiles(sb.restoreBackup));
 
+$('#language').addEventListener('change', async (e) => {
+  applyState(await sb.updateSettings({ language: e.target.value }));
+});
+
+// o main avisa quando o idioma muda (pela config ou porque "sistema" resolveu outro)
+sb.onLanguage((data) => {
+  language = data.language;
+  dict = data.dict;
+  collator = new Intl.Collator(language, { numeric: true, sensitivity: 'base' });
+  applyLanguage();
+  applyState(state); // textos montados pelo JS
+  if (lastUpdate) renderUpdate(lastUpdate);
+});
+
 $('#closeToTray').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ closeToTray: e.target.value === 'tray' }));
 });
@@ -1459,7 +1502,9 @@ window.addEventListener('drop', async (e) => {
 // ---------- atualizações ----------
 
 // o main manda o status (updater.js); aqui só vira texto, botões e o aviso na sidebar
+let lastUpdate = null;
 function renderUpdate(u) {
+  lastUpdate = u;
   const { mode, current, latest, progress, error } = u;
   const st = u.state;
   $('#updTitle').textContent = `Soundboard ${current}`;

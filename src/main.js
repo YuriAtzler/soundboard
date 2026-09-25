@@ -6,6 +6,7 @@ const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 const { writeZip, readZip } = require('./archive');
 const updater = require('./updater');
+const i18n = require('./i18n');
 
 const THEMES = ['system', 'light', 'dark'];
 const SORT_BY = ['added', 'name', 'key'];
@@ -25,6 +26,7 @@ let config = {
   outputDevice: 'default',
   theme: 'system', // 'system' | 'light' | 'dark'
   sort: { by: 'added', dir: 'asc' }, // ordem da tabela de sons; 'added' = ordem de adição
+  language: 'system', // 'system' ou um de i18n.LANGUAGES
   closeToTray: true, // fechar a janela só esconde (false = sai do app)
   trayNoticeShown: false, // o aviso "continua rodando" só aparece no primeiro fechamento
   inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
@@ -113,6 +115,7 @@ function loadConfig() {
   }
   delete config.globalHotkeys; // era uma chave; hoje os atalhos globais estão sempre ligados
   if (!THEMES.includes(config.theme)) config.theme = 'system';
+  if (config.language !== 'system' && !i18n.LANGUAGES.includes(config.language)) config.language = 'system';
   if (!SORT_BY.includes(config.sort?.by)) config.sort = { by: 'added', dir: 'asc' };
   if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
   if (!activeProfile()) config.activeProfile = config.profiles[0].id;
@@ -532,6 +535,9 @@ function updateTrayMenu() {
 }
 
 ipcMain.handle('state:get', () => publicState());
+ipcMain.on('i18n:get', (e) => {
+  e.returnValue = { language: i18n.language(), dict: i18n.dictionary() };
+});
 
 ipcMain.handle('sounds:pick', async () => {
   const res = await dialog.showOpenDialog(win, {
@@ -782,6 +788,12 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
   if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
   if ('closeToTray' in patch) config.closeToTray = !!patch.closeToTray;
+  let languageChanged = false;
+  if ('language' in patch && (patch.language === 'system' || i18n.LANGUAGES.includes(patch.language))) {
+    config.language = patch.language;
+    const before = i18n.language();
+    languageChanged = i18n.setLanguage(config.language) !== before;
+  }
   if ('openAtLogin' in patch) {
     setOpenAtLogin(!!patch.openAtLogin);
     openAtLogin = readOpenAtLogin();
@@ -799,6 +811,8 @@ ipcMain.handle('settings:update', (_e, patch) => {
   saveConfig();
   if ('inputDevice' in patch) syncKeyboard();
   if ('stopAccelerator' in patch || 'inputDevice' in patch) registerShortcuts();
+  // o renderer troca os textos sem recarregar; o menu da bandeja já foi refeito no saveConfig
+  if (languageChanged) win?.webContents.send('language', { language: i18n.language(), dict: i18n.dictionary() });
   return publicState();
 });
 
@@ -810,6 +824,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.atzler.soundboard')
 
 app.whenReady().then(() => {
   loadConfig();
+  i18n.setLanguage(config.language); // app.getLocale só vale depois do ready
   openAtLogin = readOpenAtLogin();
   createWindow();
   createTray();
