@@ -12,7 +12,7 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 ## Dados
 
 - Ficam em `app.getPath('userData')` (no Windows, `%APPDATA%\Soundboard`).
-- `soundboard.json` guarda `{ globalHotkeys, masterVolume, exclusive, outputDevice, stopAccelerator, stopKeyLabel, activeProfile, profiles[] }`. `stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global. `exclusive` liga o "um som por vez". `inputDevice` (`{ id, label }` ou `null`) é o teclado escolhido; o `id` é o `VID_xxxx&PID_xxxx(&MI_xx)` do caminho do dispositivo. `outputDevice` é o `deviceId` da saída de áudio (`'default'` = padrão do sistema), aplicado com `setSinkId`.
+- `soundboard.json` guarda `{ masterVolume, exclusive, outputDevice, stopAccelerator, stopKeyLabel, activeProfile, profiles[] }`. `stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global. `exclusive` liga o "um som por vez". `inputDevice` (`{ id, label }` ou `null`) é o teclado escolhido; o `id` é o `VID_xxxx&PID_xxxx(&MI_xx)` do caminho do dispositivo. `outputDevice` é o `deviceId` da saída de áudio (`'default'` = padrão do sistema), aplicado com `setSinkId`.
 - Cada perfil tem `id, name, accelerator, keyLabel, sounds[]`, e cada som tem `id, file, name, accelerator, keyLabel, volume, color`. O `publicState()` manda ao renderer só os sons do perfil ativo, em `sounds`.
 - Configs antigas, com `sounds[]` na raiz, são migradas para um perfil "Principal" no `loadConfig`.
 - Os áudios importados são **copiados** para `sounds/<uuid>.<ext>`, então o original pode ser apagado.
@@ -24,7 +24,8 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 - Durante a captura de tecla, o renderer chama `setCapturing(true)` e o main desliga os atalhos globais. Sem isso o sistema "engole" uma tecla já registrada e ela não chega à janela.
 - No Windows, com o NumLock desligado, o teclado numérico manda End, setas etc., e o atalho global `numN` não dispara. Nesse caso o keydown local trata a tecla (`numpadWithoutNumLock`).
 - Com um teclado escolhido (`deviceMode()` no main), o `globalShortcut` fica desligado: o main manda `device-key` só para as teclas desse teclado, e o renderer ignora os keydowns locais vinculados. Os modificadores valem vindos de qualquer teclado (o numpad não tem Ctrl). O Raw Input só observa, então a tecla continua chegando ao app em foco. Se o auxiliar falhar, `keyboardError` é preenchido e o app volta ao `globalShortcut`.
-- Com atalhos globais ligados, o main dispara `play` via IPC e o keydown local é ignorado, para não tocar duas vezes. A exceção são os accelerators em `failedHotkeys`, que o sistema recusou; esses continuam funcionando só com a janela em foco.
+- Os atalhos globais estão sempre ligados (a antiga chave `globalHotkeys` é apagada no `loadConfig`): o app é para rodar em segundo plano, como um Stream Deck. Fechar a janela só a esconde (o áudio toca no renderer, então ela não pode ser destruída). Sai-se pela bandeja (`Tray`, Windows/Linux, ícone em `src/assets/tray.png`) ou Cmd+Q, e o `before-quit` libera o fechamento. Há trava de instância única.
+- O main dispara `play` via IPC e o keydown local é ignorado, para não tocar duas vezes. A exceção são os accelerators em `failedHotkeys`, que o sistema recusou; esses continuam funcionando só com a janela em foco.
 
 ## Comandos
 
@@ -39,7 +40,7 @@ npm run dist:linux # AppImage + .deb
 
 - `.github/workflows/release.yml`: um push de tag `v*` gera os instaladores em runners Windows, macOS (x64 + arm64) e Linux e publica na Release do GitHub. A versão do `package.json` é sobrescrita pela tag durante o build.
 - Os nomes dos arquivos são fixos, sem versão (`artifactName` no `package.json`), para os links `releases/latest/download/...` do README não quebrarem. Não mude esses nomes sem atualizar o README.
-- Não há assinatura de código (sem certificados), e os avisos que o usuário vê estão documentados no README.
+- Não há assinatura de código (sem certificados), e os avisos que o usuário vê estão documentados no README. No Mac o app é assinado ad-hoc (`mac.identity: "-"`, `hardenedRuntime: false`). Sem nenhuma assinatura, o build arm64 abre como "danificado", e o hardened runtime com ad-hoc impede o Electron Framework de carregar.
 
 ## Ambiente do dono (WSL2)
 

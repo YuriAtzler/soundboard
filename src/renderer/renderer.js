@@ -9,7 +9,7 @@ const tabTpl = $('#tabTpl');
 const tabsEl = $('#tabs');
 
 let state = {
-  sounds: [], profiles: [], activeProfile: null, globalHotkeys: false, masterVolume: 1,
+  sounds: [], profiles: [], activeProfile: null, masterVolume: 1,
   exclusive: false, outputDevice: 'default', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
@@ -144,7 +144,6 @@ function setProgress(id, ratio) {
 
 function applyState(next) {
   state = next;
-  $('#global').checked = state.globalHotkeys;
   $('#exclusive').checked = state.exclusive;
   renderProfiles();
   renderOutputs();
@@ -379,7 +378,6 @@ $('#keyboard').addEventListener('change', async (e) => {
 // tecla vinda do teclado escolhido (o main já filtrou o dispositivo)
 sb.onDeviceKey((key) => {
   if (capturing || identifying) return;
-  if (!state.globalHotkeys && !document.hasFocus()) return;
   const sc = eventToShortcut(key);
   if (sc) trigger(sc.accelerator);
 });
@@ -480,7 +478,7 @@ async function finishCapture(e) {
   if (lost.length) toast(`${sc.keyLabel} ${lost.join(' e ')}`);
   if (numpadWithoutNumLock(e) && !next.deviceMode) {
     toast('Ligue o NumLock: com ele desligado, o teclado numérico só funciona com o app em foco');
-  } else if (next.globalHotkeys && next.failedHotkeys.includes(sc.accelerator)) {
+  } else if (next.failedHotkeys.includes(sc.accelerator)) {
     toast(`${sc.keyLabel} já está em uso pelo sistema — funciona só com o app em foco`);
   }
 }
@@ -529,9 +527,8 @@ window.addEventListener('keydown', (e) => {
   if (sc && isBound(sc.accelerator)) {
     e.preventDefault();
     // Com um teclado escolhido, quem dispara é o onDeviceKey (as teclas dos outros teclados não valem).
-    // Com atalhos globais, o sistema já dispara a ação, então aqui não roda de novo.
-    const handledGlobally =
-      state.globalHotkeys && !state.failedHotkeys.includes(sc.accelerator) && !numpadWithoutNumLock(e);
+    // Com o atalho global registrado, o sistema já dispara a ação, então aqui não roda de novo.
+    const handledGlobally = !state.failedHotkeys.includes(sc.accelerator) && !numpadWithoutNumLock(e);
     if (!state.deviceMode && !handledGlobally) trigger(sc.accelerator);
     return;
   }
@@ -550,16 +547,6 @@ $('#stopKey').addEventListener('click', () => captureKey(STOP));
 
 $('#exclusive').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ exclusive: e.target.checked }));
-});
-
-$('#global').addEventListener('change', async (e) => {
-  const next = await sb.updateSettings({ globalHotkeys: e.target.checked });
-  applyState(next);
-  if (next.globalHotkeys) {
-    toast(next.failedHotkeys.length
-      ? `Algumas teclas não puderam ser registradas globalmente (${next.failedHotkeys.length})`
-      : 'Atalhos ativos mesmo com o app em segundo plano');
-  }
 });
 
 $('#master').addEventListener('input', (e) => {

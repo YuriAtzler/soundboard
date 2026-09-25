@@ -18,8 +18,9 @@ Baixe a versão mais nova (ou veja todas em [Releases](https://github.com/YuriAt
 O app não tem assinatura digital paga, então o sistema avisa na primeira vez:
 
 - **Windows**: na tela azul "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
-- **macOS**: arraste o app para Aplicativos. Se ele disser que o app "está danificado" ou "não pode ser aberto",
-  rode no Terminal `xattr -cr /Applications/Soundboard.app` e abra de novo.
+- **macOS**: arraste o app para Aplicativos e abra. Quando aparecer que a Apple não pôde verificar o app, vá em
+  **Ajustes do Sistema → Privacidade e Segurança** e clique em **Abrir Mesmo Assim**. Se ainda disser que o app
+  "está danificado", rode no Terminal `xattr -cr /Applications/Soundboard.app` e abra de novo.
 - **Linux (AppImage)**: dê permissão de execução (`chmod +x Soundboard-linux.AppImage`) e abra.
 
 ## Rodar do código
@@ -33,7 +34,8 @@ npm start
 - **Vincular tecla**: clique na tecla do card e aperte a tecla (combinações com Ctrl/Alt/Shift/Cmd funcionam).
   `Esc` cancela, `Backspace` remove o vínculo.
 - **Tocar**: aperte a tecla (apertar de novo reinicia) ou clique no botão de play. `Esc` para tudo.
-- **Atalhos globais**: com a chave ligada, as teclas funcionam mesmo com o app em segundo plano.
+- **Segundo plano**: as teclas funcionam mesmo com o app minimizado ou em outra janela. Fechar a janela só a esconde:
+  o app continua na bandeja do sistema (Windows/Linux, perto do relógio), de onde se abre de novo ou se sai. No Mac, reabra pelo Dock e saia com Cmd+Q.
   Use teclas como F1–F12 ou combinações (ex.: `Ctrl+1`, `Ctrl+Num 1`), porque o atalho global "rouba" a tecla dos outros apps.
   No Windows, deixe o NumLock ligado para usar o teclado numérico como atalho global.
 - Nome e volume de cada som são editáveis no card.
