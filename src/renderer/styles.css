@@ -75,47 +75,102 @@ svg {
   stroke-linecap: round; stroke-linejoin: round;
 }
 
-/* ---------- topo ---------- */
-.topbar {
-  position: sticky; top: 0; z-index: 5;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap;
-  padding: 16px 24px;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+/* ---------- layout ---------- */
+.app { display: flex; height: 100vh; }
+.content { flex: 1; min-width: 0; overflow-y: auto; }
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  flex: none; width: 288px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 18px 20px 12px; }
+.brand h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
 .logo {
   display: grid; place-items: center;
-  width: 34px; height: 34px; border-radius: 10px;
+  width: 32px; height: 32px; border-radius: 10px;
   background: linear-gradient(135deg, var(--c0), var(--c1));
   color: #fff;
 }
-.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; padding: 0 14px;
-  border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text);
-  font: inherit; font-weight: 600; cursor: pointer;
-  transition: transform .08s, background .15s, border-color .15s;
+.side-section { padding: 8px 12px 12px; }
+.profiles-section { flex: 1; min-height: 140px; }
+.settings { border-top: 1px solid var(--border); padding-top: 12px; }
+.side-head {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 28px; padding: 0 8px; margin-bottom: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
 }
-.btn:hover { background: var(--surface-2); }
-.btn:active { transform: scale(.97); }
-.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
-.btn.primary:hover { filter: brightness(1.1); }
-.btn svg { width: 16px; height: 16px; }
+.side-add {
+  display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 6px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.side-add svg { width: 14px; height: 14px; }
+.side-add:hover { background: var(--surface-2); color: var(--text); }
 
-.master { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.master input { width: 110px; }
+/* perfis */
+.tabs { display: flex; flex-direction: column; gap: 2px; }
+.tab {
+  display: flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 6px 0 4px;
+  border-radius: 10px; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tab:hover { background: var(--surface-2); color: var(--text); }
+.tab.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+}
+.tab-name {
+  flex: 1; min-width: 0;
+  border: none; outline: none; background: transparent; color: inherit;
+  font: inherit; font-weight: 600; padding: 4px 6px; border-radius: 6px;
+  cursor: inherit; text-overflow: ellipsis;
+}
+.tab-name:not([readonly]) { background: var(--bg); cursor: text; }
+/* só vira campo de texto ao renomear; antes disso o clique é da aba */
+.tab-name[readonly] { pointer-events: none; }
+.tab-count { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.keycap.tiny { min-width: 30px; height: 24px; padding: 0 6px; font-size: 11px; border-bottom-width: 2px; }
+.keycap.tiny.unbound { font-size: 11px; border-bottom-width: 1px; }
+.tab:not(:hover):not(.active) .keycap.tiny.unbound { display: none; }
+.tab-x {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 6px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tab-x svg { width: 14px; height: 14px; }
+.tab:not(:hover) .tab-x:not(:focus-visible) { display: none; }
+.tab-x:hover { background: var(--surface); color: var(--danger); }
+.tabs.single .tab-x { display: none; }
 
-.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
+/* configurações */
+.field { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.field.inline { flex-direction: row; align-items: center; justify-content: space-between; }
+.field[hidden] { display: none; }
+.field-label { font-weight: 500; color: var(--text); }
+.master { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.master svg { flex: none; width: 16px; height: 16px; }
+.master input { flex: 1; min-width: 0; }
+.select {
+  width: 100%; height: 34px; padding: 0 8px;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit; cursor: pointer;
+  text-overflow: ellipsis;
+}
+.select:hover { border-color: var(--accent); }
+
+.switch { cursor: pointer; }
 .switch input { display: none; }
 .track {
-  position: relative; width: 36px; height: 20px; border-radius: 99px;
+  flex: none; position: relative; width: 36px; height: 20px; border-radius: 99px;
   background: var(--surface-2); border: 1px solid var(--border);
   transition: background .2s;
 }
@@ -126,76 +181,80 @@ svg {
 }
 .switch input:checked + .track { background: var(--accent); border-color: transparent; }
 .switch input:checked + .track .thumb { transform: translateX(16px); background: #fff; }
-.switch input:checked ~ span:last-child { color: var(--text); }
 
-/* ---------- tema ---------- */
 .theme {
   display: flex; gap: 2px; padding: 3px;
-  border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  border-radius: 10px; border: 1px solid var(--border); background: var(--bg);
 }
 .theme button {
-  display: grid; place-items: center;
-  width: 30px; height: 28px; border-radius: 7px; border: none;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+  height: 28px; border-radius: 7px; border: none;
   background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600;
   transition: background .15s, color .15s;
 }
-.theme button svg { width: 16px; height: 16px; }
+.theme button svg { width: 14px; height: 14px; }
 .theme button:hover { color: var(--text); }
-.theme button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+.theme button[aria-pressed="true"] {
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 1px 3px var(--shadow);
+}
 
-/* ---------- perfis e saída ---------- */
-.profilebar {
-  flex-basis: 100%;
-  display: flex; align-items: center; gap: 6px;
-  margin: -4px 0 -6px;
+/* ---------- topo da área de sons ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 24px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
 }
-.tabs { display: flex; gap: 6px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
-.tab {
-  flex: none; display: flex; align-items: center; gap: 4px;
-  height: 34px; padding: 0 4px 0 6px;
-  border-radius: 10px; border: 1px solid transparent;
-  color: var(--muted); cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s;
+.title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.title h2 {
+  margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tab:hover { background: var(--surface); }
-.tab.active { background: var(--surface); border-color: var(--border); color: var(--text); }
-.tab-name {
-  field-sizing: content; min-width: 3ch; max-width: 22ch;
-  border: none; outline: none; background: transparent; color: inherit;
-  font: inherit; font-weight: 600; padding: 4px 4px; border-radius: 6px;
-  cursor: inherit; text-overflow: ellipsis;
+.count { flex: none; color: var(--muted); }
+.controls { flex: none; display: flex; align-items: center; gap: 8px; }
+.menu {
+  display: none; place-items: center; flex: none;
+  width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); cursor: pointer;
 }
-.tab-name:not([readonly]) { background: var(--surface-2); cursor: text; }
-/* só vira campo de texto ao renomear; antes disso o clique é da aba */
-.tab-name[readonly] { pointer-events: none; }
-.keycap.tiny { min-width: 30px; height: 24px; padding: 0 6px; font-size: 11px; border-bottom-width: 2px; }
-.keycap.tiny.unbound { font-size: 11px; border-bottom-width: 1px; }
-.tab:not(.active) .keycap.tiny.unbound, .tab:not(.active) .tab-x { display: none; }
-.tab-x, .tab-add {
-  flex: none; display: grid; place-items: center;
-  width: 24px; height: 24px; border-radius: 6px; border: none;
-  background: transparent; color: var(--muted); cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.tab-x svg, .tab-add svg { width: 14px; height: 14px; }
-.tab-x { opacity: 0; }
-.tab:hover .tab-x, .tab-x:focus-visible { opacity: 1; }
-.tab-x:hover { background: var(--surface-2); color: var(--danger); }
-.tabs.single .tab-x { display: none; }
-.tab-add { width: 30px; height: 30px; }
-.tab-add:hover { background: var(--surface); color: var(--text); }
 
-.switch.exclusive { margin-left: auto; flex: none; padding-left: 12px; }
-.output { margin-left: 12px; display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
-.output[hidden] { display: none; }
-.output svg { flex: none; width: 16px; height: 16px; }
-.output select {
-  max-width: 220px; min-width: 0; height: 30px; padding: 0 8px;
-  border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
-  text-overflow: ellipsis;
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: transform .08s, background .15s, border-color .15s;
 }
-.output select:hover { border-color: var(--accent); }
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn svg { width: 16px; height: 16px; }
+
+.scrim { display: none; }
+
+/* janela estreita: a sidebar vira gaveta */
+@media (max-width: 760px) {
+  .menu { display: grid; }
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; z-index: 15;
+    box-shadow: 0 0 40px var(--shadow);
+    transform: translateX(-100%); visibility: hidden;
+    transition: transform .22s ease, visibility 0s .22s;
+  }
+  .nav-open .sidebar { transform: none; visibility: visible; transition: transform .22s ease; }
+  .scrim {
+    display: block; position: fixed; inset: 0; z-index: 14;
+    background: color-mix(in srgb, #000 35%, transparent);
+    opacity: 0; pointer-events: none; transition: opacity .22s;
+  }
+  .nav-open .scrim { opacity: 1; pointer-events: auto; }
+}
 
 /* ---------- range ---------- */
 /* --fill vem do renderer (paintRange); --range-c é a cor da parte preenchida */
@@ -265,8 +324,7 @@ main { padding: 24px; }
 }
 .keycap:hover { border-color: var(--c, var(--accent)); }
 .keycap.unbound { color: var(--muted); font-weight: 500; font-family: inherit; font-size: 12px; border-style: dashed; border-bottom-width: 1px; }
-.keycap.small { min-width: 40px; height: 36px; font-size: 13px; }
-.stop-group { display: flex; align-items: center; gap: 6px; }
+.keycap.small { min-width: 44px; height: 32px; font-size: 13px; }
 .keycap.big { min-width: 88px; height: 88px; font-size: 28px; border-bottom-width: 5px; cursor: default; }
 
 .icon-btn {
@@ -368,9 +426,8 @@ kbd {
 @media (max-width: 640px) {
   .topbar { padding: 12px 16px; }
   main { padding: 16px; }
-  .master input { width: 80px; }
   .card { gap: 10px; }
   .vol { width: 70px; }
   .vol-wrap svg { display: none; }
-  .output select { max-width: 150px; }
+  .btn .label { display: none; }
 }

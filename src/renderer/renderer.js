@@ -244,11 +244,15 @@ function renderProfiles() {
     tab.classList.toggle('active', profile.id === state.activeProfile);
     const name = tab.querySelector('.tab-name');
     if (document.activeElement !== name) name.value = profile.name;
+    tab.querySelector('.tab-count').textContent = profile.count;
     const key = tab.querySelector('.keycap');
     key.textContent = profile.keyLabel || '+tecla';
     key.classList.toggle('unbound', !profile.keyLabel);
   }
   tabsEl.classList.toggle('single', state.profiles.length === 1);
+  const active = state.profiles.find((p) => p.id === state.activeProfile);
+  $('#profileName').textContent = active.name;
+  $('#profileCount').textContent = active.count === 1 ? '1 som' : `${active.count} sons`;
   tabs.get(state.activeProfile)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -295,6 +299,16 @@ function renameProfile(id) {
 async function switchProfile(id) {
   if (id !== state.activeProfile) applyState(await sb.switchProfile(id));
 }
+
+// gaveta da sidebar (janela estreita)
+const setNav = (open) => document.body.classList.toggle('nav-open', open);
+$('#menu').addEventListener('click', () => setNav(true));
+$('#scrim').addEventListener('click', () => setNav(false));
+// trocar de perfil fecha a gaveta; clicar no perfil já aberto não, para dar o duplo clique de renomear
+tabsEl.addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (tab && !tab.classList.contains('active') && !e.target.closest('button')) setNav(false);
+});
 
 $('#addProfile').addEventListener('click', async () => {
   applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
