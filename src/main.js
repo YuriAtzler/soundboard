@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 
+const THEMES = ['system', 'light', 'dark'];
 const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm', 'opus'];
 
 let win;
@@ -19,6 +20,7 @@ let config = {
   masterVolume: 1,
   exclusive: false,
   outputDevice: 'default',
+  theme: 'system', // 'system' | 'light' | 'dark'
   inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
   stopAccelerator: null,
   stopKeyLabel: null,
@@ -104,6 +106,7 @@ function loadConfig() {
     saveConfig();
   }
   delete config.globalHotkeys; // era uma chave; hoje os atalhos globais estão sempre ligados
+  if (!THEMES.includes(config.theme)) config.theme = 'system';
   if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
   if (!activeProfile()) config.activeProfile = config.profiles[0].id;
   // descarta entradas cujo arquivo sumiu
@@ -211,13 +214,20 @@ function importFile(srcPath) {
   return sound;
 }
 
+// O tema é aplicado pelo renderer (data-theme + color-scheme). O nativeTheme fica sempre no
+// sistema, senão o prefers-color-scheme passaria a refletir o tema escolhido, e não o do sistema.
+function isDark() {
+  if (config.theme === 'system') return nativeTheme.shouldUseDarkColors;
+  return config.theme === 'dark';
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1040,
     height: 720,
     minWidth: 520,
     minHeight: 420,
-    backgroundColor: '#0f1117',
+    backgroundColor: isDark() ? '#0f1117' : '#f4f5f9',
     title: 'Soundboard',
     autoHideMenuBar: true,
     webPreferences: {
@@ -226,6 +236,8 @@ function createWindow() {
       nodeIntegration: false,
       // mantém o áudio tocando com a janela em segundo plano (atalhos globais)
       backgroundThrottling: false,
+      // tema salvo, para a primeira pintura já sair certa (o getState é assíncrono)
+      additionalArguments: [`--sb-theme=${config.theme}`],
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -357,6 +369,7 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('masterVolume' in patch) config.masterVolume = patch.masterVolume;
   if ('exclusive' in patch) config.exclusive = !!patch.exclusive;
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
+  if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
   // o renderer só limpa; quem escolhe o teclado é o keyboard:identify
   if ('inputDevice' in patch && !patch.inputDevice) config.inputDevice = null;
   if ('stopAccelerator' in patch) {

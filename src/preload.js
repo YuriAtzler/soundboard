@@ -20,4 +20,5 @@ contextBridge.exposeInMainWorld('api', {
   onDeviceKey: (cb) => ipcRenderer.on('device-key', (_e, key) => cb(key)),
   onState: (cb) => ipcRenderer.on('state', (_e, state) => cb(state)),
   platform: process.platform,
+  initialTheme: process.argv.find((a) => a.startsWith('--sb-theme='))?.split('=')[1] || 'system',
 });

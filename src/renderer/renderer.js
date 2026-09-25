@@ -10,7 +10,7 @@ const tabsEl = $('#tabs');
 
 let state = {
   sounds: [], profiles: [], activeProfile: null, masterVolume: 1,
-  exclusive: false, outputDevice: 'default', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
+  exclusive: false, outputDevice: 'default', theme: 'system', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
 const cards = new Map(); // id -> element
@@ -144,6 +144,7 @@ function setProgress(id, ratio) {
 
 function applyState(next) {
   state = next;
+  applyTheme();
   $('#exclusive').checked = state.exclusive;
   renderProfiles();
   renderOutputs();
@@ -299,6 +300,57 @@ $('#addProfile').addEventListener('click', async () => {
   applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
   renameProfile(state.activeProfile);
 });
+
+// ---------- tema ----------
+
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+// 'light' ou 'dark' de fato, resolvendo o 'system'
+function resolvedTheme(theme = state.theme) {
+  if (theme === 'system') return systemDark.matches ? 'dark' : 'light';
+  return theme;
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedTheme();
+  for (const btn of $('#theme').children) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.theme === state.theme));
+  }
+}
+
+// troca o tema abrindo o novo num círculo a partir de (x, y)
+function setTheme(theme, x, y) {
+  const changes = resolvedTheme(theme) !== resolvedTheme();
+  const apply = () => {
+    state.theme = theme;
+    applyTheme();
+  };
+  sb.updateSettings({ theme });
+  if (!changes || !document.startViewTransition || reducedMotion.matches) {
+    apply();
+    return;
+  }
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const transition = document.startViewTransition(apply);
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+      { duration: 500, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' },
+    );
+  });
+}
+
+$('#theme').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.dataset.theme === state.theme) return;
+  const r = btn.getBoundingClientRect();
+  setTheme(btn.dataset.theme, r.left + r.width / 2, r.top + r.height / 2);
+});
+// no 'system', acompanha o sistema operacional
+systemDark.addEventListener('change', applyTheme);
+state.theme = sb.initialTheme;
+applyTheme();
 
 // ---------- saída de áudio ----------
 

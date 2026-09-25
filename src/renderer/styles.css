@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0f1117;
   --surface: #181b24;
   --surface-2: #20242f;
@@ -7,6 +8,9 @@
   --text: #e8eaf0;
   --muted: #8a90a2;
   --accent: #7c6cff;
+  --on-accent: #fff;
+  --danger: #ff5d6c;
+  --shadow: rgba(0, 0, 0, .5);
   --radius: 16px;
   --c0: #7c6cff;
   --c1: #ff6b9a;
@@ -16,8 +20,29 @@
   --c5: #a3e635;
 }
 
+/* data-theme vem do renderer (applyTheme); antes dele carregar, segue o sistema */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f5f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f5;
+  --border: #e1e4ec;
+  --track: #d5d9e3;
+  --text: #1b1e27;
+  --muted: #6b7185;
+  --accent: #6a58f5;
+  --danger: #e5394b;
+  --shadow: rgba(27, 30, 39, .18);
+  --c0: #6a58f5;
+  --c1: #f0487f;
+  --c2: #1aa89b;
+  --c3: #f29d12;
+  --c4: #2f8ff0;
+  --c5: #72b51b;
+}
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
+    color-scheme: light;
     --bg: #f4f5f9;
     --surface: #ffffff;
     --surface-2: #eef0f5;
@@ -27,6 +52,10 @@
     --muted: #6b7185;
   }
 }
+
+/* troca de tema: o tema novo abre num círculo a partir do clique (setTheme) */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 
 * { box-sizing: border-box; }
 
@@ -76,7 +105,7 @@ svg {
 }
 .btn:hover { background: var(--surface-2); }
 .btn:active { transform: scale(.97); }
-.btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn svg { width: 16px; height: 16px; }
 
@@ -98,6 +127,21 @@ svg {
 .switch input:checked + .track { background: var(--accent); border-color: transparent; }
 .switch input:checked + .track .thumb { transform: translateX(16px); background: #fff; }
 .switch input:checked ~ span:last-child { color: var(--text); }
+
+/* ---------- tema ---------- */
+.theme {
+  display: flex; gap: 2px; padding: 3px;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+}
+.theme button {
+  display: grid; place-items: center;
+  width: 30px; height: 28px; border-radius: 7px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.theme button svg { width: 16px; height: 16px; }
+.theme button:hover { color: var(--text); }
+.theme button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
 
 /* ---------- perfis e saída ---------- */
 .profilebar {
@@ -136,7 +180,7 @@ svg {
 .tab-x svg, .tab-add svg { width: 14px; height: 14px; }
 .tab-x { opacity: 0; }
 .tab:hover .tab-x, .tab-x:focus-visible { opacity: 1; }
-.tab-x:hover { background: var(--surface-2); color: #ff5d6c; }
+.tab-x:hover { background: var(--surface-2); color: var(--danger); }
 .tabs.single .tab-x { display: none; }
 .tab-add { width: 30px; height: 30px; }
 .tab-add:hover { background: var(--surface); color: var(--text); }
@@ -232,7 +276,7 @@ main { padding: 24px; }
   opacity: 0; transition: opacity .15s, background .15s, color .15s;
 }
 .card:hover .icon-btn, .icon-btn:focus-visible { opacity: 1; }
-.icon-btn:hover { background: var(--surface-2); color: #ff5d6c; }
+.icon-btn:hover { background: var(--surface-2); color: var(--danger); }
 .icon-btn svg { width: 16px; height: 16px; }
 
 .name {
@@ -298,7 +342,7 @@ main { padding: 24px; }
 .modal-card {
   display: flex; flex-direction: column; align-items: center; text-align: center;
   padding: 32px 40px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 20px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.5);
+  border-radius: 20px; box-shadow: 0 30px 80px -20px var(--shadow);
   animation: pop .2s ease-out;
 }
 .modal-card h3 { margin: 20px 0 6px; font-size: 18px; }
