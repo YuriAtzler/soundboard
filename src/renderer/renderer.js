@@ -69,6 +69,37 @@ function numpadWithoutNumLock(e) {
   return sb.platform === 'win32' && /^Numpad\d$/.test(e.code) && !e.getModifierState('NumLock');
 }
 
+// Estado do NumLock, para avisar das teclas numN (só dá para ler num evento de teclado ou mouse).
+let numLockOff = false;
+function trackNumLock(e) {
+  const off = sb.platform === 'win32' && e.getModifierState && !e.getModifierState('NumLock');
+  if (off === numLockOff) return;
+  numLockOff = off;
+  if (state.profiles.length) applyState(state); // atualiza os avisos das teclas
+}
+window.addEventListener('keydown', trackNumLock, true);
+window.addEventListener('mousedown', trackNumLock, true);
+
+// por que uma tecla vinculada só funciona com o app em foco; null se estiver tudo certo
+function keyProblem(accelerator, keyLabel) {
+  if (!accelerator) return null;
+  if (state.failedHotkeys.includes(accelerator)) {
+    return `O sistema não deixou usar ${keyLabel} como atalho global (outro programa já usa). Ela só funciona com o Soundboard em foco.`;
+  }
+  if (numLockOff && !state.deviceMode && /^num\d$/.test(accelerator)) {
+    return `O NumLock está desligado, então ${keyLabel} só funciona com o Soundboard em foco. Ligue o NumLock.`;
+  }
+  return null;
+}
+
+// marca a tecla com problema (borda de aviso + explicação no tooltip)
+function markKey(el, accelerator, keyLabel, title) {
+  const problem = keyProblem(accelerator, keyLabel);
+  el.classList.toggle('warn', !!problem);
+  el.title = problem || title;
+  return problem;
+}
+
 // ---------- reprodução ----------
 
 function effectiveVolume(sound) {
@@ -155,6 +186,7 @@ function applyState(next) {
   const stopKey = $('#stopKey');
   stopKey.textContent = state.stopKeyLabel || 'Tecla';
   stopKey.classList.toggle('unbound', !state.stopKeyLabel);
+  markKey(stopKey, state.stopAccelerator, state.stopKeyLabel, 'Tecla para parar todos os sons (funciona como atalho global)');
 
   const ids = new Set(state.sounds.map((s) => s.id));
   for (const [id, el] of rows) {
@@ -213,13 +245,12 @@ function buildRow(id) {
 function updateRow(row, sound) {
   row.style.setProperty('--c', `var(--c${sound.color % 6})`);
   const key = row.querySelector('.keycap');
-  if (sound.keyLabel) {
-    key.textContent = sound.keyLabel;
-    key.classList.remove('unbound');
-  } else {
-    key.textContent = 'Vincular tecla';
-    key.classList.add('unbound');
-  }
+  key.textContent = sound.keyLabel || 'Sem tecla';
+  key.classList.toggle('unbound', !sound.keyLabel);
+  const problem = markKey(key, sound.accelerator, sound.keyLabel, 'Clique para trocar a tecla');
+  const warn = row.querySelector('.key-warn');
+  warn.hidden = !problem && !!sound.keyLabel;
+  warn.title = problem || 'Este som não tem tecla: só toca pelo botão ▶. Clique em "Sem tecla" para vincular uma.';
   const name = row.querySelector('.name');
   if (document.activeElement !== name) name.value = sound.name;
   const vol = row.querySelector('.vol');
@@ -256,6 +287,7 @@ function renderProfiles() {
     const key = tab.querySelector('.keycap');
     key.textContent = profile.keyLabel || '+tecla';
     key.classList.toggle('unbound', !profile.keyLabel);
+    markKey(key, profile.accelerator, profile.keyLabel, 'Tecla para abrir este perfil (vale em qualquer perfil)');
   }
   tabsEl.classList.toggle('single', state.profiles.length === 1);
   const active = state.profiles.find((p) => p.id === state.activeProfile);

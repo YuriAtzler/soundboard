@@ -10,6 +10,7 @@
   --accent: #7c6cff;
   --on-accent: #fff;
   --danger: #ff5d6c;
+  --warn: #ffb547;
   --shadow: rgba(0, 0, 0, .5);
   --radius: 16px;
   --topbar-h: 64px;
@@ -33,6 +34,7 @@
   --muted: #6b7185;
   --accent: #6a58f5;
   --danger: #e5394b;
+  --warn: #d98a00;
   --shadow: rgba(27, 30, 39, .18);
   --c0: #6a58f5;
   --c1: #f0487f;
@@ -352,6 +354,11 @@ main { --gap: 20px; padding: var(--gap) 24px 32px; }
 }
 .keycap:hover { border-color: var(--c, var(--accent)); }
 .keycap.unbound { color: var(--muted); font-weight: 500; font-family: inherit; font-size: 12px; border-style: dashed; border-bottom-width: 1px; }
+.keycap.warn, .keycap.warn:hover { border-color: var(--warn); }
+.key-cell { gap: 6px; }
+.key-warn { flex: none; display: grid; place-items: center; color: var(--warn); cursor: help; }
+.key-warn[hidden] { display: none; }
+.key-warn svg { width: 16px; height: 16px; }
 .keycap.small { min-width: 44px; height: 32px; font-size: 13px; }
 .keycap.big { min-width: 88px; height: 88px; font-size: 28px; border-bottom-width: 5px; cursor: default; }
 

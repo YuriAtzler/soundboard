@@ -108,7 +108,7 @@
           </div>
           <h2>Nenhum som ainda</h2>
           <p>Arraste arquivos de áudio para cá ou clique em <b>Adicionar áudio</b>.<br/>
-             Depois, clique em <b>Vincular tecla</b> em cada som.</p>
+             Depois, vincule uma tecla a cada som.</p>
         </section>
         <section id="list" class="table" role="table" aria-label="Sons">
           <div class="thead" role="row">
@@ -160,7 +160,12 @@
         </button>
       </div>
       <div class="cell" role="cell"><input class="name" spellcheck="false" /></div>
-      <div class="cell" role="cell"><button class="keycap" title="Clique para vincular uma tecla"></button></div>
+      <div class="cell key-cell" role="cell">
+        <button class="keycap"></button>
+        <span class="key-warn" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>
+        </span>
+      </div>
       <div class="cell vol-wrap" role="cell" title="Volume deste som">
         <input class="vol" type="range" min="0" max="1" step="0.01" />
         <span class="vol-value"></span>
