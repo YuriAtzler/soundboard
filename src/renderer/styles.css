@@ -155,9 +155,12 @@ svg {
 .tabs.single .tab-x { display: none; }
 
 /* pé da sidebar */
-.side-foot { padding: 10px 12px 14px; border-top: 1px solid var(--border); }
+.side-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 14px; border-top: 1px solid var(--border);
+}
 .side-item {
-  width: 100%; display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
   height: 38px; padding: 0 10px; border-radius: 10px; border: none;
   background: transparent; color: var(--muted); cursor: pointer;
   font: inherit; font-weight: 600; text-align: left;
@@ -252,6 +255,8 @@ body:not([data-view="settings"]) .settings-view,
 .setting-text p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .setting-control { flex: none; display: flex; align-items: center; justify-content: flex-end; }
 .setting .theme { width: 280px; }
+.theme.compact { flex: none; padding: 2px; }
+.theme.compact button { flex: none; width: 28px; height: 28px; }
 
 /* ---------- topo da área de sons ---------- */
 .topbar {

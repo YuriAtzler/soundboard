@@ -541,7 +541,8 @@ function resolvedTheme(theme = state.theme) {
 
 function applyTheme() {
   document.documentElement.dataset.theme = resolvedTheme();
-  for (const btn of $('#theme').children) {
+  // o tema aparece em dois lugares: no pé da sidebar e no card das configurações
+  for (const btn of document.querySelectorAll('.theme button')) {
     btn.setAttribute('aria-pressed', String(btn.dataset.theme === state.theme));
   }
 }
@@ -568,7 +569,8 @@ function setTheme(theme, x, y) {
   });
 }
 
-$('#theme').addEventListener('click', (e) => {
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.theme')) return;
   const btn = e.target.closest('button');
   if (!btn || btn.dataset.theme === state.theme) return;
   const r = btn.getBoundingClientRect();
