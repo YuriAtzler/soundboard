@@ -73,7 +73,7 @@ dali em diante o aviso aparece no próprio app. Também dá para procurar em **C
   - **Segundo plano**: o que o ✕ faz e **Iniciar com o sistema** (o app abre escondido, com as teclas já funcionando).
   - **Backup**: **Exportar tudo** guarda todos os perfis, sons e configurações num `.soundboard`; **Restaurar** junta os
     perfis do backup aos atuais ou substitui tudo. A saída de áudio e o teclado escolhido não vão no backup.
-  - **Atualizações** e **Aparência**.
+  - **Atualizações** e **Aparência**: tema e **idioma** (português ou inglês; por padrão, o do sistema).
 
 Os áudios são copiados para a pasta de dados do app, então o arquivo original pode ser movido ou apagado.
 
@@ -82,6 +82,7 @@ Os áudios são copiados para a pasta de dados do app, então o arquivo original
 ```bash
 npm install
 npm start
+npm run check:i18n  # confere se as traduções estão completas
 ```
 
 ## Publicar uma versão
