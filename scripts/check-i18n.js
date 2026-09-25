@@ -32,7 +32,7 @@ for (const [lang, dict] of Object.entries(locales)) {
 }
 
 // ---------- 2. chaves usadas ----------
-const jsFiles = ['src/main.js', 'src/updater.js', 'src/renderer/renderer.js'];
+const jsFiles = ['src/main.js', 'src/updater.js', 'src/link.js', 'src/renderer/renderer.js'];
 const used = new Set();
 for (const file of jsFiles) {
   const src = read(file);
@@ -44,8 +44,8 @@ for (const file of jsFiles) {
 const html = read('src/renderer/index.html');
 for (const m of html.matchAll(/data-i18n(?:-html|-title|-placeholder|-aria)?="([^"]+)"/g)) used.add(m[1]);
 for (const k of used) if (!(k in locales[base])) problems.push(`chave usada mas inexistente: "${k}"`);
-// chaves montadas em tempo de execução (zip.${code})
-const dynamic = /^zip\./;
+// chaves montadas em tempo de execução (zip.${code}, link.${code})
+const dynamic = /^(zip|link)\./;
 const unused = baseKeys.filter((k) => !used.has(k) && !dynamic.test(k));
 
 // ---------- 3. texto fixo no código ----------

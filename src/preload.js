@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   pickSounds: () => ipcRenderer.invoke('sounds:pick'),
   checkFiles: (files) =>
     ipcRenderer.invoke('sounds:check', Array.from(files).map((f) => webUtils.getPathForFile(f))),
+  importLink: (url) => ipcRenderer.invoke('sounds:link', url),
   readAudio: (src) => ipcRenderer.invoke('sounds:read', src),
   addSound: (draft) => ipcRenderer.invoke('sounds:add', draft),
   updateSound: (id, patch) => ipcRenderer.invoke('sounds:update', id, patch),

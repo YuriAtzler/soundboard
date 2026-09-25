@@ -648,6 +648,8 @@ body:has(.bulk:not([hidden])) main { padding-bottom: 96px; }
   margin-top: 8px; padding: 12px 8px 0; border-top: 1px solid var(--border);
 }
 .editor-foot .spacer { flex: 1; }
+.modal-card.link-card { width: min(520px, calc(100vw - 32px)); }
+.key-note[hidden] { display: none; }
 .editor-foot [hidden] { display: none; }
 
 /* ---------- vazio ---------- */
@@ -659,7 +661,7 @@ body:has(.bulk:not([hidden])) main { padding-bottom: 96px; }
 }
 .empty h2 { color: var(--text); margin: 18px 0 6px; font-size: 18px; }
 .empty p { margin: 0; }
-.empty .btn { margin-top: 20px; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 20px; }
 .empty .formats { margin-top: 14px; font-size: 12px; }
 .empty-icon {
   display: grid; place-items: center; width: 64px; height: 64px; border-radius: 18px;

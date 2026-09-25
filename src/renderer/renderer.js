@@ -704,6 +704,8 @@ const ICONS = {
   export: '<path d="M12 3v12M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
   import: '<path d="M12 15V3M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  file: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
 };
 
@@ -1385,6 +1387,13 @@ window.addEventListener('keydown', (e) => {
     popoverKey(e);
     return;
   }
+  if (linkOpen()) {
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      closeLink();
+    }
+    return;
+  }
   if (editorOpen()) {
     // com o modal aberto, as teclas são dele (Enter confirma pelo submit do form)
     if (e.code === 'Escape') {
@@ -1438,8 +1447,87 @@ const pickFiles = async () => {
   const files = await sb.pickSounds();
   if (files.length) enqueue(files);
 };
-$('#add').addEventListener('click', pickFiles);
+$('#add').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  openPopover([
+    { label: t('menu.addFiles'), icon: 'file', action: pickFiles },
+    { label: t('menu.addLink'), icon: 'link', action: () => openLink() },
+  ], btn, btn);
+});
 $('#emptyAdd').addEventListener('click', pickFiles);
+$('#emptyLink').addEventListener('click', () => openLink());
+
+// ---------- importar de link ----------
+
+const linkDialog = $('#linkDialog');
+const linkUrl = $('#linkUrl');
+const linkGo = $('#linkGo');
+const linkError = $('#linkError');
+let linkBusy = false;
+const linkOpen = () => !linkDialog.hidden;
+const isLink = (text) => /^https?:\/\/\S+$/i.test(text);
+
+function renderLink() {
+  linkGo.disabled = linkBusy;
+  linkGo.textContent = t(linkBusy ? 'link.loading' : 'link.import');
+  linkUrl.disabled = linkBusy;
+}
+
+// abre o modal do link; com `url` (colado ou arrastado) já começa a baixar
+function openLink(url = '') {
+  if (linkBusy) return;
+  linkUrl.value = url;
+  linkError.hidden = true;
+  linkDialog.hidden = false;
+  renderLink();
+  if (url) submitLink();
+  else linkUrl.focus();
+}
+
+function closeLink() {
+  if (linkBusy) return;
+  linkDialog.hidden = true;
+}
+
+async function submitLink() {
+  const url = linkUrl.value.trim();
+  if (linkBusy || !url) return;
+  linkBusy = true;
+  linkError.hidden = true;
+  renderLink();
+  const res = await sb.importLink(url);
+  linkBusy = false;
+  renderLink();
+  if (res.error) {
+    linkError.textContent = res.error;
+    linkError.hidden = false;
+    linkUrl.focus();
+    linkUrl.select();
+    return;
+  }
+  closeLink();
+  enqueue([res.candidate]);
+}
+
+$('#linkForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  submitLink();
+});
+$('#linkCancel').addEventListener('click', closeLink);
+$('#linkClose').addEventListener('click', closeLink);
+linkDialog.addEventListener('mousedown', (e) => {
+  if (e.target === linkDialog) closeLink();
+});
+
+// colar um link fora de um campo de texto importa direto
+document.addEventListener('paste', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (linkOpen() || editorOpen() || capturing) return;
+  const text = e.clipboardData.getData('text').trim();
+  if (!isLink(text)) return;
+  e.preventDefault();
+  openLink(text);
+});
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
 
@@ -1496,7 +1584,8 @@ $('#master').addEventListener('change', (e) => sb.updateSettings({ masterVolume:
 const drop = $('#drop');
 let dragDepth = 0;
 window.addEventListener('dragenter', (e) => {
-  if (!e.dataTransfer.types.includes('Files')) return;
+  const { types } = e.dataTransfer;
+  if (!types.includes('Files') && !types.includes('text/uri-list')) return;
   dragDepth++;
   drop.hidden = false;
 });
@@ -1510,6 +1599,12 @@ window.addEventListener('drop', async (e) => {
   drop.hidden = true;
   // .soundboard vira perfil; o resto segue para o modal de áudio
   const files = [...e.dataTransfer.files];
+  // um link arrastado do navegador (sem arquivo) é baixado como no "Importar de link"
+  const url = e.dataTransfer.getData('text/uri-list').split('\n').find((l) => isLink(l.trim()));
+  if (!files.length && url) {
+    if (!editorOpen() && !capturing) openLink(url.trim());
+    return;
+  }
   const packs = files.filter((f) => f.name.toLowerCase().endsWith('.soundboard'));
   for (const pack of packs) await importProfiles(() => sb.importProfileFile(pack));
   const audio = files.filter((f) => !packs.includes(f));

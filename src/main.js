@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 const { writeZip, readZip } = require('./archive');
+const link = require('./link');
 const updater = require('./updater');
 const i18n = require('./i18n');
 
@@ -552,6 +553,21 @@ ipcMain.handle('sounds:pick', async () => {
 
 ipcMain.handle('sounds:check', (_e, paths) => candidates(paths));
 
+// Áudios baixados de um link esperam o modal nesta pasta temporária; o sounds:add copia o arquivo
+// para sounds/ e apaga o daqui, e o que sobrar (modal cancelado) é apagado ao abrir e ao sair.
+const linksDir = () => path.join(app.getPath('temp'), 'soundboard-links');
+const clearLinks = () => fs.rmSync(linksDir(), { recursive: true, force: true });
+
+ipcMain.handle('sounds:link', async (_e, url) => {
+  try {
+    const { path: file, name } = await link.download(url, linksDir(), AUDIO_EXTS);
+    return { candidate: { path: file, name, url: pathToFileURL(file).href } };
+  } catch (err) {
+    const key = `link.${err.code}`;
+    return { error: i18n.t(key) !== key ? i18n.t(key, { detail: err.message }) : err.message };
+  }
+});
+
 // bytes do áudio para a forma de onda: de um candidato ({ path }) ou de um som já importado ({ id })
 ipcMain.handle('sounds:read', (_e, src) => {
   let file = src.path;
@@ -567,6 +583,7 @@ ipcMain.handle('sounds:read', (_e, src) => {
 // só aqui o arquivo é copiado: cancelar o modal não deixa nada para trás
 ipcMain.handle('sounds:add', (_e, draft) => {
   const s = importFile(draft.path);
+  if (draft.path && path.dirname(draft.path) === linksDir()) fs.rmSync(draft.path, { force: true });
   if (!s) return publicState();
   patchSound(s, draft);
   releaseAccelerator(s.accelerator, s, [activeProfile()]);
@@ -826,6 +843,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.atzler.soundboard')
 
 app.whenReady().then(() => {
   loadConfig();
+  clearLinks();
   openAtLogin = readOpenAtLogin();
   createWindow();
   createTray();
@@ -843,4 +861,5 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   keyboard.stop();
+  clearLinks();
 });

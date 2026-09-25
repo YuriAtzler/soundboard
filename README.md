@@ -41,6 +41,9 @@ dali em diante o aviso aparece no próprio app. Também dá para procurar em **C
   uma janela para escolher o nome, o trecho que toca (arraste as alças na forma de onda e use **Ouvir trecho**) e a
   tecla, que é obrigatória. O som só é adicionado ao confirmar. Com vários arquivos, eles abrem um de cada vez ("2 de 5"),
   e dá para pular algum.
+- **Importar de link**: no botão **Adicionar áudio → Importar de link…**, cole o link de um áudio ou de uma página que
+  tenha um, como os botões do [MyInstants](https://www.myinstants.com/pt/index/br/). Também dá para colar o link direto
+  na janela (`Ctrl+V`) ou arrastá-lo do navegador. O áudio é baixado e abre a mesma janela de nome, trecho e tecla.
 - **Editar**: clique no nome do som ou no lápis para mudar o nome, o trecho ou a tecla. O corte não altera o arquivo,
   então **Usar o áudio inteiro** desfaz.
 - **Trocar a tecla**: clique na tecla do som e aperte outra (combinações com Ctrl/Alt/Shift/Cmd funcionam). `Esc` cancela.
