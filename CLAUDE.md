@@ -46,7 +46,7 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 
 ## Atualização
 
-- `src/updater.js` escolhe o modo: `auto` (Windows NSIS e AppImage: `electron-updater` baixa sozinho e `quitAndInstall` no "Reiniciar"), `manual` (Mac, portátil e `.deb`: consulta a API de releases e abre `releases/latest/download/<artifactName>`) e `dev` (`npm start`: consulta, mas abre a página da Release). No `auto`, se a Release não tiver os `latest*.yml`, a checagem cai na API como no `manual`.
+- `src/updater.js` escolhe o modo: `auto` (Windows NSIS e AppImage: `electron-updater` baixa sozinho e `quitAndInstall` no "Reiniciar"), `portable` (`.exe` portátil: consulta a API de releases, baixa o `.exe` novo para a pasta temporária e, no "Reiniciar" ou ao sair, o `portable-update.ps1` desanexado espera o app fechar e copia o novo por cima de `PORTABLE_EXECUTABLE_FILE`; se a pasta do `.exe` não aceitar escrita, vira `manual`), `manual` (Mac e `.deb`: consulta a API de releases e abre `releases/latest/download/<artifactName>`) e `dev` (`npm start`: consulta, mas abre a página da Release). No `auto`, se a Release não tiver os `latest*.yml`, a checagem cai na API como no `manual`.
 - O Mac não atualiza sozinho porque o Squirrel.Mac exige assinatura Developer ID.
 - Depende do `publish` (GitHub) no `package.json`, que embute o `app-update.yml` no app, e dos `latest*.yml`/`.blockmap` que o workflow sobe para a Release.
 
