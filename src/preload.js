@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// síncrono de propósito: o renderer já monta a tela no idioma certo
+const i18n = ipcRenderer.sendSync('i18n:get');
+
 contextBridge.exposeInMainWorld('api', {
+  i18n,
+  onLanguage: (cb) => ipcRenderer.on('language', (_e, data) => cb(data)),
   getState: () => ipcRenderer.invoke('state:get'),
   pickSounds: () => ipcRenderer.invoke('sounds:pick'),
   checkFiles: (files) =>

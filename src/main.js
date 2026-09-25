@@ -6,6 +6,7 @@ const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 const { writeZip, readZip } = require('./archive');
 const updater = require('./updater');
+const i18n = require('./i18n');
 
 const THEMES = ['system', 'light', 'dark'];
 const SORT_BY = ['added', 'name', 'key'];
@@ -25,6 +26,7 @@ let config = {
   outputDevice: 'default',
   theme: 'system', // 'system' | 'light' | 'dark'
   sort: { by: 'added', dir: 'asc' }, // ordem da tabela de sons; 'added' = ordem de adição
+  language: 'system', // 'system' ou um de i18n.LANGUAGES
   closeToTray: true, // fechar a janela só esconde (false = sai do app)
   trayNoticeShown: false, // o aviso "continua rodando" só aparece no primeiro fechamento
   inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
@@ -104,7 +106,7 @@ function loadConfig() {
   // formato antigo (sem perfis): os sons ficavam na raiz
   if (Array.isArray(config.sounds)) {
     if (!config.profiles.length) {
-      const p = newProfile('Principal');
+      const p = newProfile(i18n.t('main.defaultProfile'));
       p.sounds = config.sounds;
       config.profiles.push(p);
     }
@@ -113,8 +115,10 @@ function loadConfig() {
   }
   delete config.globalHotkeys; // era uma chave; hoje os atalhos globais estão sempre ligados
   if (!THEMES.includes(config.theme)) config.theme = 'system';
+  if (config.language !== 'system' && !i18n.LANGUAGES.includes(config.language)) config.language = 'system';
+  i18n.setLanguage(config.language); // antes do perfil padrão, que nasce com nome no idioma
   if (!SORT_BY.includes(config.sort?.by)) config.sort = { by: 'added', dir: 'asc' };
-  if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
+  if (!config.profiles.length) config.profiles.push(newProfile(i18n.t('main.defaultProfile')));
   if (!activeProfile()) config.activeProfile = config.profiles[0].id;
   // descarta entradas cujo arquivo sumiu
   for (const p of config.profiles) {
@@ -288,10 +292,10 @@ function readExport(file) {
     manifest = null;
   }
   if (manifest?.format !== EXPORT_FORMAT || !Array.isArray(manifest.profiles)) {
-    throw new Error('Este arquivo não é uma exportação do Soundboard');
+    throw new Error(i18n.t('import.notSoundboard'));
   }
   if (manifest.version > EXPORT_VERSION) {
-    throw new Error('O arquivo veio de uma versão mais nova do Soundboard; atualize o app para importar');
+    throw new Error(i18n.t('import.newer'));
   }
   return { manifest, zip };
 }
@@ -313,7 +317,7 @@ function importProfiles(manifest, zip) {
   const globalOwner = (acc) =>
     acc === config.stopAccelerator || config.profiles.some((p) => p.accelerator === acc);
   for (const src of manifest.profiles) {
-    const p = newProfile(uniqueProfileName(String(src.name || 'Perfil importado').slice(0, 60)));
+    const p = newProfile(uniqueProfileName(String(src.name || i18n.t('import.defaultName')).slice(0, 60)));
     const inUse = (acc) => globalOwner(acc) || config.profiles.some((x) => x.sounds.some((s) => s.accelerator === acc));
     if (src.accelerator && !inUse(src.accelerator)) {
       p.accelerator = src.accelerator;
@@ -337,7 +341,7 @@ function importProfiles(manifest, zip) {
       const sound = {
         id,
         file: id + ext,
-        name: String(s.name || 'Sem nome').slice(0, 120),
+        name: String(s.name || i18n.t('name.untitled')).slice(0, 120),
         accelerator: null,
         keyLabel: null,
         volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1,
@@ -375,6 +379,9 @@ function applyBackupSettings(settings) {
     config.stopKeyLabel = settings.stopAccelerator ? settings.stopKeyLabel : null;
   }
 }
+
+// erro que vai para o toast: os do ZIP têm code e viram texto no idioma do app
+const errorText = (err) => (err.code && i18n.t(`zip.${err.code}`) !== `zip.${err.code}` ? i18n.t(`zip.${err.code}`) : err.message);
 
 const SOUNDBOARD_FILTER = [{ name: 'Soundboard', extensions: ['soundboard'] }];
 const safeFileName = (name) => name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'perfil';
@@ -470,16 +477,14 @@ function createWindow() {
 
 // no primeiro fechamento, avisa que o app segue rodando (senão parece que fechou e as teclas "funcionam sozinhas")
 function showTrayNotice() {
-  const where = process.platform === 'darwin'
-    ? 'Para abrir de novo, clique no ícone no Dock. Para sair, use Cmd+Q.'
-    : 'Para abrir ou sair, use o ícone perto do relógio (pode estar escondido na setinha ^).';
-  const body = `As teclas continuam funcionando. ${where}`;
+  const where = i18n.t(process.platform === 'darwin' ? 'notice.mac' : 'notice.tray');
+  const body = i18n.t('notice.body', { where });
   if (Notification.isSupported()) {
-    const n = new Notification({ title: 'O Soundboard continua rodando', body });
+    const n = new Notification({ title: i18n.t('notice.title'), body });
     n.on('click', showWindow);
     n.show();
   } else if (tray && process.platform === 'win32') {
-    tray.displayBalloon({ title: 'O Soundboard continua rodando', content: body });
+    tray.displayBalloon({ title: i18n.t('notice.title'), content: body });
   }
 }
 
@@ -512,7 +517,7 @@ function updateTrayMenu() {
       win?.webContents.send('state', publicState());
     },
   }));
-  const stop = { label: 'Parar tudo', click: () => win?.webContents.send('stop-all') };
+  const stop = { label: i18n.t('tray.stopAll'), click: () => win?.webContents.send('stop-all') };
   if (process.platform === 'darwin') {
     // o Dock já tem "Abrir" e "Sair"
     app.dock?.setMenu(Menu.buildFromTemplate([...profiles, { type: 'separator' }, stop]));
@@ -520,24 +525,27 @@ function updateTrayMenu() {
   }
   tray.setToolTip(`Soundboard · ${activeProfile()?.name ?? ''}`);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Abrir Soundboard', click: showWindow },
+    { label: i18n.t('tray.open'), click: showWindow },
     { type: 'separator' },
-    { label: 'Perfis', enabled: false },
+    { label: i18n.t('tray.profiles'), enabled: false },
     ...profiles,
     { type: 'separator' },
     stop,
     { type: 'separator' },
-    { label: 'Sair', click: () => app.quit() },
+    { label: i18n.t('tray.quit'), click: () => app.quit() },
   ]));
 }
 
 ipcMain.handle('state:get', () => publicState());
+ipcMain.on('i18n:get', (e) => {
+  e.returnValue = { language: i18n.language(), dict: i18n.dictionary() };
+});
 
 ipcMain.handle('sounds:pick', async () => {
   const res = await dialog.showOpenDialog(win, {
-    title: 'Escolha arquivos de áudio',
+    title: i18n.t('dialog.pickAudio'),
     properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Áudio', extensions: AUDIO_EXTS }],
+    filters: [{ name: i18n.t('dialog.audioFilter'), extensions: AUDIO_EXTS }],
   });
   return res.canceled ? [] : candidates(res.filePaths);
 });
@@ -637,7 +645,7 @@ ipcMain.handle('profiles:export', async (_e, id) => {
   const p = config.profiles.find((x) => x.id === id);
   if (!p) return { ok: false };
   const res = await dialog.showSaveDialog(win, {
-    title: 'Exportar perfil',
+    title: i18n.t('dialog.exportProfile'),
     defaultPath: path.join(app.getPath('documents'), `${safeFileName(p.name)}.soundboard`),
     filters: SOUNDBOARD_FILTER,
   });
@@ -646,7 +654,7 @@ ipcMain.handle('profiles:export', async (_e, id) => {
     writeExport(res.filePath, 'profile', [p]);
     return { ok: true, file: path.basename(res.filePath) };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: errorText(err) };
   }
 });
 
@@ -654,7 +662,7 @@ ipcMain.handle('profiles:export', async (_e, id) => {
 ipcMain.handle('profiles:import', async (_e, filePath) => {
   let file = filePath;
   if (!file) {
-    const res = await dialog.showOpenDialog(win, { title: 'Importar perfil', properties: ['openFile'], filters: SOUNDBOARD_FILTER });
+    const res = await dialog.showOpenDialog(win, { title: i18n.t('dialog.importProfile'), properties: ['openFile'], filters: SOUNDBOARD_FILTER });
     if (res.canceled) return { state: publicState() };
     file = res.filePaths[0];
   }
@@ -666,15 +674,15 @@ ipcMain.handle('profiles:import', async (_e, filePath) => {
     registerShortcuts();
     return { state: publicState(), imported: created.map((p) => p.name), droppedKeys, missing };
   } catch (err) {
-    return { state: publicState(), error: err.message };
+    return { state: publicState(), error: errorText(err) };
   }
 });
 
 ipcMain.handle('backup:export', async () => {
   const stamp = new Date().toISOString().slice(0, 10);
   const res = await dialog.showSaveDialog(win, {
-    title: 'Backup de tudo',
-    defaultPath: path.join(app.getPath('documents'), `Soundboard backup ${stamp}.soundboard`),
+    title: i18n.t('dialog.backup'),
+    defaultPath: path.join(app.getPath('documents'), `${i18n.t('dialog.backupFile', { date: stamp })}.soundboard`),
     filters: SOUNDBOARD_FILTER,
   });
   if (res.canceled || !res.filePath) return { ok: false };
@@ -683,30 +691,30 @@ ipcMain.handle('backup:export', async () => {
     writeExport(res.filePath, 'backup', config.profiles, settings);
     return { ok: true, file: path.basename(res.filePath) };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: errorText(err) };
   }
 });
 
 // Restaurar pergunta se junta aos perfis atuais ou substitui tudo. Substituir importa primeiro
 // e só depois apaga os perfis antigos, para um arquivo com problema não deixar o app vazio.
 ipcMain.handle('backup:restore', async () => {
-  const pick = await dialog.showOpenDialog(win, { title: 'Restaurar backup', properties: ['openFile'], filters: SOUNDBOARD_FILTER });
+  const pick = await dialog.showOpenDialog(win, { title: i18n.t('dialog.restore'), properties: ['openFile'], filters: SOUNDBOARD_FILTER });
   if (pick.canceled) return { state: publicState() };
   let parsed;
   try {
     parsed = readExport(pick.filePaths[0]);
   } catch (err) {
-    return { state: publicState(), error: err.message };
+    return { state: publicState(), error: errorText(err) };
   }
   const { manifest, zip } = parsed;
   const count = manifest.profiles.length;
   const sounds = manifest.profiles.reduce((n, p) => n + (p.sounds?.length || 0), 0);
   const { response } = await dialog.showMessageBox(win, {
     type: 'question',
-    title: 'Restaurar backup',
-    message: `O arquivo tem ${count} ${count === 1 ? 'perfil' : 'perfis'} e ${sounds} ${sounds === 1 ? 'som' : 'sons'}.`,
-    detail: 'Juntar mantém os seus perfis e acrescenta os do arquivo. Substituir apaga os perfis e sons atuais e aplica as configurações do backup.',
-    buttons: ['Juntar aos atuais', 'Substituir tudo', 'Cancelar'],
+    title: i18n.t('dialog.restore'),
+    message: i18n.t('restore.message', { profiles: i18n.t('restore.profiles', { n: count }), sounds: i18n.t('restore.sounds', { n: sounds }) }),
+    detail: i18n.t('restore.detail'),
+    buttons: [i18n.t('restore.merge'), i18n.t('restore.replace'), i18n.t('restore.cancel')],
     defaultId: 0,
     cancelId: 2,
     noLink: true,
@@ -721,7 +729,7 @@ ipcMain.handle('backup:restore', async () => {
       applyBackupSettings(manifest.settings);
     }
     const { created, droppedKeys, missing } = importProfiles(manifest, zip);
-    if (replace && !created.length) throw new Error('O backup não tem perfis');
+    if (replace && !created.length) throw new Error(i18n.t('import.emptyBackup'));
     if (replace) {
       for (const p of old.profiles) for (const s of p.sounds) fs.rmSync(path.join(soundsDir, s.file), { force: true });
     }
@@ -735,7 +743,7 @@ ipcMain.handle('backup:restore', async () => {
       for (const p of config.profiles) for (const s of p.sounds) fs.rmSync(path.join(soundsDir, s.file), { force: true });
       Object.assign(config, old);
     }
-    return { state: publicState(), error: err.message };
+    return { state: publicState(), error: errorText(err) };
   }
 });
 
@@ -782,6 +790,12 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
   if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
   if ('closeToTray' in patch) config.closeToTray = !!patch.closeToTray;
+  let languageChanged = false;
+  if ('language' in patch && (patch.language === 'system' || i18n.LANGUAGES.includes(patch.language))) {
+    config.language = patch.language;
+    const before = i18n.language();
+    languageChanged = i18n.setLanguage(config.language) !== before;
+  }
   if ('openAtLogin' in patch) {
     setOpenAtLogin(!!patch.openAtLogin);
     openAtLogin = readOpenAtLogin();
@@ -799,6 +813,8 @@ ipcMain.handle('settings:update', (_e, patch) => {
   saveConfig();
   if ('inputDevice' in patch) syncKeyboard();
   if ('stopAccelerator' in patch || 'inputDevice' in patch) registerShortcuts();
+  // o renderer troca os textos sem recarregar; o menu da bandeja já foi refeito no saveConfig
+  if (languageChanged) win?.webContents.send('language', { language: i18n.language(), dict: i18n.dictionary() });
   return publicState();
 });
 

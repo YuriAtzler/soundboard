@@ -1,6 +1,6 @@
 # Soundboard
 
-App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuário importa arquivos de áudio, vincula cada um a uma tecla (ou combinação) e toca o som ao apertar a tecla. Interface em português (pt-BR), sem framework. A única dependência de runtime é o `electron-updater`; o resto (inclusive o ZIP do `.soundboard`) é escrito à mão, então não adicione dependências sem necessidade.
+App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuário importa arquivos de áudio, vincula cada um a uma tecla (ou combinação) e toca o som ao apertar a tecla. Interface em português (pt-BR) e inglês, sem framework. A única dependência de runtime é o `electron-updater`; o resto (inclusive o ZIP do `.soundboard`) é escrito à mão, então não adicione dependências sem necessidade.
 
 ## Estrutura
 
@@ -8,6 +8,7 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 - `src/keyboard.js` + `src/keyboard-helper.ps1`: (só Windows) descobre de qual teclado veio cada tecla. O `.ps1` compila um C# com `Add-Type` que escuta o Raw Input (`RIDEV_INPUTSINK`), e o `keyboard.js` converte scancode em `KeyboardEvent.code`. O script é copiado para a pasta de dados antes de rodar, porque o PowerShell não lê de dentro do `app.asar`.
 - `src/archive.js`: leitor e escritor de ZIP sem dependências, usado pelo `.soundboard`. Grava sem compressão; lê sem compressão ou deflate. Não tem ZIP64 (limite de 4 GB).
 - `src/updater.js`: atualização pelo app (ver "Atualização").
+- `src/i18n.js` + `src/locales/*.json`: textos da interface (ver "Idiomas").
 - `src/preload.js`: expõe `window.api` via `contextBridge` (contextIsolation ligado, nodeIntegration desligado).
 - `src/renderer/`: UI em HTML/CSS/JS puro (`index.html`, `styles.css`, `renderer.js`). No renderer, `window.api` é referenciado como `sb`; não declare `const api`, porque colide com o global exposto.
 - Layout: sidebar (perfis; no pé, aviso de atualização, seletor de tema e o item Configurações; vira gaveta abaixo de 760px) e a área principal, que alterna pelo `data-view` do `<body>`: `sounds` (topo com busca e tabela `#list`, linhas do `rowTpl`) ou `settings` (`#settingsView`, um card `.setting` por opção). Adicionar e editar som é pelo modal `#editor`; a captura de tecla (`#capture`) abre por cima dele. O menu ⋯ dos perfis e o do + usam o popover genérico `openPopover(items, at, owner)`.
@@ -15,7 +16,7 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 ## Dados
 
 - Ficam em `app.getPath('userData')` (no Windows, `%APPDATA%\Soundboard`).
-- `soundboard.json` guarda `{ masterVolume, exclusive, outputDevice, theme, sort, closeToTray, trayNoticeShown, stopAccelerator, stopKeyLabel, activeProfile, profiles[] }`. `closeToTray` diz se o ✕ esconde (padrão) ou sai, e `trayNoticeShown` marca que o aviso "continua rodando" já apareceu. `theme` é `'system' | 'light' | 'dark'`, e `sort` é `{ by: 'added' | 'name' | 'key', dir: 'asc' | 'desc' }`, a ordem da tabela. `stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global. `exclusive` liga o "um som por vez". `inputDevice` (`{ id, label }` ou `null`) é o teclado escolhido; o `id` é o `VID_xxxx&PID_xxxx(&MI_xx)` do caminho do dispositivo. `outputDevice` é o `deviceId` da saída de áudio (`'default'` = padrão do sistema), aplicado com `setSinkId`.
+- `soundboard.json` guarda `{ masterVolume, exclusive, outputDevice, theme, language, sort, closeToTray, trayNoticeShown, stopAccelerator, stopKeyLabel, activeProfile, profiles[] }`. `closeToTray` diz se o ✕ esconde (padrão) ou sai, e `trayNoticeShown` marca que o aviso "continua rodando" já apareceu. `theme` é `'system' | 'light' | 'dark'`, e `sort` é `{ by: 'added' | 'name' | 'key', dir: 'asc' | 'desc' }`, a ordem da tabela. `stop*` é a tecla de "parar tudo", que dispara `stop-all` como atalho global. `exclusive` liga o "um som por vez". `inputDevice` (`{ id, label }` ou `null`) é o teclado escolhido; o `id` é o `VID_xxxx&PID_xxxx(&MI_xx)` do caminho do dispositivo. `outputDevice` é o `deviceId` da saída de áudio (`'default'` = padrão do sistema), aplicado com `setSinkId`.
 - Cada perfil tem `id, name, accelerator, keyLabel, sounds[]`, e cada som tem `id, file, name, accelerator, keyLabel, volume, color, start, end`. `start`/`end` são o trecho tocado, em segundos (`end: null` = até o fim): o corte não mexe no arquivo, e o renderer para o som no fim por timer. O `publicState()` manda ao renderer só os sons do perfil ativo, em `sounds`.
 - Configs antigas, com `sounds[]` na raiz, são migradas para um perfil "Principal" no `loadConfig`.
 - Os áudios importados são **copiados** para `sounds/<uuid>.<ext>`, então o original pode ser apagado. A cópia só acontece ao confirmar o modal (`sounds:add`); antes disso `sounds:pick`/`sounds:check` só devolvem candidatos, e `sounds:read` manda os bytes para a forma de onda.
@@ -47,6 +48,15 @@ App desktop multiplataforma (Windows, macOS, Linux) feito em Electron: o usuári
 - `src/updater.js` escolhe o modo: `auto` (Windows NSIS e AppImage: `electron-updater` baixa sozinho e `quitAndInstall` no "Reiniciar"), `manual` (Mac, portátil e `.deb`: consulta a API de releases e abre `releases/latest/download/<artifactName>`) e `dev` (`npm start`: consulta, mas abre a página da Release). No `auto`, se a Release não tiver os `latest*.yml`, a checagem cai na API como no `manual`.
 - O Mac não atualiza sozinho porque o Squirrel.Mac exige assinatura Developer ID.
 - Depende do `publish` (GitHub) no `package.json`, que embute o `app-update.yml` no app, e dos `latest*.yml`/`.blockmap` que o workflow sobe para a Release.
+
+## Idiomas
+
+- **Nenhum texto de interface fica escrito no código.** Todo texto vai para `src/locales/pt-BR.json` e `en.json` (chaves planas, como `settings.output.title`) e é usado com `t('chave', { vars })` no renderer ou `i18n.t(...)` no main. Um valor `{ one, other }` é plural, escolhido por `vars.n`. `npm run check:i18n` (também no workflow de release) falha se faltar chave num idioma, se o código usar chave inexistente ou se sobrar texto com acento no código.
+- No HTML, o texto é marcado com `data-i18n` (texto), `data-i18n-html` (só para textos dos dicionários com `<kbd>`/`<br>`), `data-i18n-title`, `data-i18n-placeholder` e `data-i18n-aria`, preenchidos pelo `applyI18n` (também nos `<template>`). Botão com ícone leva o texto num `<span data-i18n>`, para não apagar o SVG.
+- `config.language` é `'system'` ou um de `i18n.LANGUAGES`; `system` usa português se `app.getLocale()` for `pt-*`, e inglês nos demais casos. O preload pega o dicionário por `sendSync` (a primeira pintura já sai no idioma certo). Trocar o idioma manda o evento `language` ao renderer, que refaz os textos sem recarregar, e o `saveConfig` refaz o menu da bandeja.
+- Textos montados pelo JS (toasts, rótulos, descrições que dependem da plataforma) precisam ser refeitos no `applyState`/`renderUpdate`, não só na abertura, para acompanhar a troca.
+- Nomes que o usuário já tem (perfis, sons) não são traduzidos; só os nomes padrão novos seguem o idioma. Para acrescentar um idioma: um JSON novo em `src/locales`, o código em `i18n.LANGUAGES` e uma `<option>` no card de Idioma, com o nome no próprio idioma.
+- O `archive.js` lança erros com `code` (`too-big`, `invalid`, `corrupt`, `unsupported`), que o main traduz com as chaves `zip.*`.
 
 ## Tema
 

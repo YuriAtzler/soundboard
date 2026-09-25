@@ -18,6 +18,11 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
+// erros com code, para quem usa traduzir: 'too-big' | 'invalid' | 'corrupt' | 'unsupported'
+function zipError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
 const UTF8 = 0x0800; // bit 11: nomes em UTF-8
 
 // data e hora no formato do DOS, que é o que o ZIP guarda
@@ -43,7 +48,7 @@ function writeZip(outPath, entries) {
       const data = typeof entry.data === 'function' ? entry.data() : entry.data;
       const name = Buffer.from(entry.name, 'utf8');
       const crc = crc32(data);
-      if (offset + data.length > LIMIT) throw new Error('Arquivo grande demais para exportar (mais de 4 GB)');
+      if (offset + data.length > LIMIT) throw zipError('too-big', 'archive larger than 4 GB');
       const local = Buffer.alloc(30);
       local.writeUInt32LE(0x04034b50, 0);
       local.writeUInt16LE(20, 4); // versão necessária
@@ -112,16 +117,16 @@ function readZip(zipPath) {
         break;
       }
     }
-    if (eocd < 0) throw new Error('Não é um arquivo .soundboard válido');
+    if (eocd < 0) throw zipError('invalid', 'not a zip file');
     const count = tail.readUInt16LE(eocd + 10);
     const dirSize = tail.readUInt32LE(eocd + 12);
     const dirStart = tail.readUInt32LE(eocd + 16);
-    if (dirStart === LIMIT || dirStart + dirSize > size) throw new Error('Arquivo .soundboard corrompido ou grande demais');
+    if (dirStart === LIMIT || dirStart + dirSize > size) throw zipError('corrupt', 'bad central directory');
     const dir = readAt(dirStart, dirSize);
     const entries = new Map();
     let p = 0;
     for (let i = 0; i < count; i++) {
-      if (dir.readUInt32LE(p) !== 0x02014b50) throw new Error('Arquivo .soundboard corrompido');
+      if (dir.readUInt32LE(p) !== 0x02014b50) throw zipError('corrupt', 'bad header');
       const method = dir.readUInt16LE(p + 10);
       const crc = dir.readUInt32LE(p + 16);
       const csize = dir.readUInt32LE(p + 20);
@@ -144,15 +149,15 @@ function readZip(zipPath) {
         try {
           const local = Buffer.alloc(30);
           fs.readSync(f, local, 0, 30, e.offset);
-          if (local.readUInt32LE(0) !== 0x04034b50) throw new Error('Arquivo .soundboard corrompido');
+          if (local.readUInt32LE(0) !== 0x04034b50) throw zipError('corrupt', 'bad header');
           const start = e.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
           const raw = Buffer.alloc(e.csize);
           fs.readSync(f, raw, 0, e.csize, start);
           let data;
           if (e.method === 0) data = raw;
           else if (e.method === 8) data = zlib.inflateRawSync(raw);
-          else throw new Error('Compressão não suportada no .soundboard');
-          if (data.length !== e.usize || crc32(data) !== e.crc) throw new Error(`"${name}" está corrompido no .soundboard`);
+          else throw zipError('unsupported', `compression method ${e.method}`);
+          if (data.length !== e.usize || crc32(data) !== e.crc) throw zipError('corrupt', `bad crc for ${name}`);
           return data;
         } finally {
           fs.closeSync(f);
