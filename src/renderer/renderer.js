@@ -4,7 +4,8 @@ const isMac = sb.platform === 'darwin';
 const $ = (sel) => document.querySelector(sel);
 const grid = $('#grid');
 const empty = $('#empty');
-const tpl = $('#cardTpl');
+const tpl = $('#rowTpl');
+const list = $('#list');
 const tabTpl = $('#tabTpl');
 const tabsEl = $('#tabs');
 
@@ -13,7 +14,7 @@ let state = {
   exclusive: false, outputDevice: 'default', theme: 'system', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
-const cards = new Map(); // id -> element
+const rows = new Map(); // id -> linha da tabela
 const tabs = new Map(); // id do perfil -> element
 
 // ---------- teclas -> accelerator do Electron ----------
@@ -95,10 +96,10 @@ async function play(id) {
   if (!audio) {
     audio = new Audio(sound.url);
     audio.preload = 'auto';
-    audio.addEventListener('play', () => cards.get(id)?.classList.add('playing'));
+    audio.addEventListener('play', () => rows.get(id)?.classList.add('playing'));
     const done = () => {
-      const card = cards.get(id);
-      card?.classList.remove('playing');
+      const row = rows.get(id);
+      row?.classList.remove('playing');
       setProgress(id, 0);
     };
     audio.addEventListener('ended', done);
@@ -113,10 +114,10 @@ async function play(id) {
   await applySink(audio);
   audio.play().catch(() => toast('Não foi possível tocar este arquivo'));
 
-  const card = cards.get(id);
-  if (card) {
-    card.classList.add('hit');
-    setTimeout(() => card.classList.remove('hit'), 110);
+  const row = rows.get(id);
+  if (row) {
+    row.classList.add('hit');
+    setTimeout(() => row.classList.remove('hit'), 110);
   }
 }
 
@@ -136,7 +137,7 @@ function stopAll() {
 }
 
 function setProgress(id, ratio) {
-  const bar = cards.get(id)?.querySelector('.progress span');
+  const bar = rows.get(id)?.querySelector('.progress span');
   if (bar) bar.style.width = `${ratio * 100}%`;
 }
 
@@ -156,37 +157,38 @@ function applyState(next) {
   stopKey.classList.toggle('unbound', !state.stopKeyLabel);
 
   const ids = new Set(state.sounds.map((s) => s.id));
-  for (const [id, el] of cards) {
+  for (const [id, el] of rows) {
     if (!ids.has(id)) {
       el.remove();
-      cards.delete(id);
+      rows.delete(id);
       players.get(id)?.pause();
       players.delete(id);
     }
   }
   for (const sound of state.sounds) {
-    let card = cards.get(sound.id);
-    if (!card) {
-      card = buildCard(sound.id);
-      cards.set(sound.id, card);
-      grid.appendChild(card);
+    let row = rows.get(sound.id);
+    if (!row) {
+      row = buildRow(sound.id);
+      rows.set(sound.id, row);
+      grid.appendChild(row);
     }
-    updateCard(card, sound);
+    updateRow(row, sound);
   }
   empty.hidden = state.sounds.length > 0;
+  list.hidden = !state.sounds.length;
 }
 
-function buildCard(id) {
-  const card = tpl.content.firstElementChild.cloneNode(true);
-  card.dataset.id = id;
+function buildRow(id) {
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  row.dataset.id = id;
 
-  card.querySelector('.keycap').addEventListener('click', () => captureKey(id));
-  card.querySelector('.play').addEventListener('click', () => toggle(id));
-  card.querySelector('.remove').addEventListener('click', async () => {
+  row.querySelector('.keycap').addEventListener('click', () => captureKey(id));
+  row.querySelector('.play').addEventListener('click', () => toggle(id));
+  row.querySelector('.remove').addEventListener('click', async () => {
     applyState(await sb.removeSound(id));
   });
 
-  const name = card.querySelector('.name');
+  const name = row.querySelector('.name');
   name.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === 'Escape') name.blur();
   });
@@ -195,21 +197,22 @@ function buildCard(id) {
     applyState(await sb.updateSound(id, { name: value }));
   });
 
-  const vol = card.querySelector('.vol');
+  const vol = row.querySelector('.vol');
   vol.addEventListener('input', () => {
     const sound = state.sounds.find((s) => s.id === id);
     sound.volume = Number(vol.value);
+    showVolume(row, sound.volume);
     const audio = players.get(id);
     if (audio) audio.volume = effectiveVolume(sound);
   });
   vol.addEventListener('change', () => sb.updateSound(id, { volume: Number(vol.value) }));
 
-  return card;
+  return row;
 }
 
-function updateCard(card, sound) {
-  card.style.setProperty('--c', `var(--c${sound.color % 6})`);
-  const key = card.querySelector('.keycap');
+function updateRow(row, sound) {
+  row.style.setProperty('--c', `var(--c${sound.color % 6})`);
+  const key = row.querySelector('.keycap');
   if (sound.keyLabel) {
     key.textContent = sound.keyLabel;
     key.classList.remove('unbound');
@@ -217,11 +220,16 @@ function updateCard(card, sound) {
     key.textContent = 'Vincular tecla';
     key.classList.add('unbound');
   }
-  const name = card.querySelector('.name');
+  const name = row.querySelector('.name');
   if (document.activeElement !== name) name.value = sound.name;
-  const vol = card.querySelector('.vol');
+  const vol = row.querySelector('.vol');
   vol.value = sound.volume;
   paintRange(vol);
+  showVolume(row, sound.volume);
+}
+
+function showVolume(row, volume) {
+  row.querySelector('.vol-value').textContent = `${Math.round(volume * 100)}%`;
 }
 
 // ---------- perfis ----------
