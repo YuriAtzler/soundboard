@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu, Notification, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -23,6 +23,8 @@ let config = {
   outputDevice: 'default',
   theme: 'system', // 'system' | 'light' | 'dark'
   sort: { by: 'added', dir: 'asc' }, // ordem da tabela de sons; 'added' = ordem de adição
+  closeToTray: true, // fechar a janela só esconde (false = sai do app)
+  trayNoticeShown: false, // o aviso "continua rodando" só aparece no primeiro fechamento
   inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
   stopAccelerator: null,
   stopKeyLabel: null,
@@ -120,6 +122,7 @@ function loadConfig() {
 
 function saveConfig() {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  updateTrayMenu(); // perfis, nomes e o perfil ativo aparecem no menu
 }
 
 function publicState() {
@@ -269,8 +272,32 @@ function createWindow() {
   win.on('close', (e) => {
     if (quitting) return;
     e.preventDefault();
+    if (!config.closeToTray) {
+      app.quit();
+      return;
+    }
     win.hide();
+    if (!config.trayNoticeShown) {
+      config.trayNoticeShown = true;
+      saveConfig();
+      showTrayNotice();
+    }
   });
+}
+
+// no primeiro fechamento, avisa que o app segue rodando (senão parece que fechou e as teclas "funcionam sozinhas")
+function showTrayNotice() {
+  const where = process.platform === 'darwin'
+    ? 'Para abrir de novo, clique no ícone no Dock. Para sair, use Cmd+Q.'
+    : 'Para abrir ou sair, use o ícone perto do relógio (pode estar escondido na setinha ^).';
+  const body = `As teclas continuam funcionando. ${where}`;
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: 'O Soundboard continua rodando', body });
+    n.on('click', showWindow);
+    n.show();
+  } else if (tray && process.platform === 'win32') {
+    tray.displayBalloon({ title: 'O Soundboard continua rodando', content: body });
+  }
 }
 
 function showWindow() {
@@ -281,15 +308,44 @@ function showWindow() {
 
 // no Mac o ícone do Dock já reabre a janela (activate)
 function createTray() {
-  if (process.platform === 'darwin') return;
+  if (process.platform === 'darwin') {
+    updateTrayMenu(); // no Mac não há bandeja; o menu vai para o ícone no Dock
+    return;
+  }
   tray = new Tray(path.join(__dirname, 'assets', 'tray.png'));
-  tray.setToolTip('Soundboard');
+  tray.on('click', showWindow);
+  updateTrayMenu();
+}
+
+// menu do ícone da bandeja (no Mac, do ícone no Dock): perfis, parar tudo, abrir e sair
+function updateTrayMenu() {
+  if (!tray && process.platform !== 'darwin') return;
+  const profiles = config.profiles.map((p) => ({
+    label: p.keyLabel ? `${p.name}   (${p.keyLabel})` : p.name,
+    type: 'radio',
+    checked: p.id === config.activeProfile,
+    click: () => {
+      switchProfile(p.id);
+      win?.webContents.send('state', publicState());
+    },
+  }));
+  const stop = { label: 'Parar tudo', click: () => win?.webContents.send('stop-all') };
+  if (process.platform === 'darwin') {
+    // o Dock já tem "Abrir" e "Sair"
+    app.dock?.setMenu(Menu.buildFromTemplate([...profiles, { type: 'separator' }, stop]));
+    return;
+  }
+  tray.setToolTip(`Soundboard · ${activeProfile()?.name ?? ''}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Abrir Soundboard', click: showWindow },
     { type: 'separator' },
+    { label: 'Perfis', enabled: false },
+    ...profiles,
+    { type: 'separator' },
+    stop,
+    { type: 'separator' },
     { label: 'Sair', click: () => app.quit() },
   ]));
-  tray.on('click', showWindow);
 }
 
 ipcMain.handle('state:get', () => publicState());
@@ -425,6 +481,7 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('exclusive' in patch) config.exclusive = !!patch.exclusive;
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
   if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
+  if ('closeToTray' in patch) config.closeToTray = !!patch.closeToTray;
   if ('sort' in patch && SORT_BY.includes(patch.sort?.by)) {
     config.sort = { by: patch.sort.by, dir: patch.sort.dir === 'desc' ? 'desc' : 'asc' };
   }
@@ -444,6 +501,8 @@ ipcMain.handle('settings:update', (_e, patch) => {
 // uma instância só: abrir de novo mostra a janela escondida, em vez de disputar as teclas
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => win && showWindow());
+
+if (process.platform === 'win32') app.setAppUserModelId('com.atzler.soundboard');
 
 app.whenReady().then(() => {
   loadConfig();

@@ -198,6 +198,7 @@ function applyState(next) {
   state = next;
   applyTheme();
   $('#exclusive').checked = state.exclusive;
+  $('#closeToTray').value = state.closeToTray === false ? 'quit' : 'tray';
   renderProfiles();
   renderOutputs();
   renderKeyboard();
@@ -1253,6 +1254,14 @@ $('#add').addEventListener('click', pickFiles);
 $('#emptyAdd').addEventListener('click', pickFiles);
 $('#stopAll').addEventListener('click', stopAll);
 $('#stopKey').addEventListener('click', () => captureKey(STOP));
+
+// onde o app fica quando a janela fecha muda de sistema para sistema
+$('#closeHint').textContent = isMac
+  ? 'Continuando, as teclas seguem funcionando com a janela fechada; reabra pelo ícone no Dock e saia com Cmd+Q.'
+  : 'Continuando, as teclas seguem funcionando com a janela fechada. O Soundboard fica no ícone perto do relógio, de onde se abre de novo, troca de perfil ou sai.';
+$('#closeToTray').addEventListener('change', async (e) => {
+  applyState(await sb.updateSettings({ closeToTray: e.target.value === 'tray' }));
+});
 
 $('#exclusive').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ exclusive: e.target.checked }));
