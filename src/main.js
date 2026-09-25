@@ -130,6 +130,8 @@ function publicState() {
   return {
     ...settings,
     failedHotkeys,
+    openAtLogin,
+    canOpenAtLogin: canOpenAtLogin(),
     deviceMode: deviceMode(),
     keyboardError,
     profiles: profiles.map(({ id, name, accelerator, keyLabel, sounds }) => ({
@@ -241,6 +243,50 @@ function importFile(srcPath) {
   return sound;
 }
 
+// ---------- iniciar com o sistema ----------
+
+// Ao abrir junto com o sistema, o app começa escondido na bandeja (as teclas já funcionam).
+// Windows/Linux recebem --hidden; no Mac não há argumentos, então vale o wasOpenedAtLogin.
+const startHidden = process.argv.includes('--hidden') ||
+  (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin);
+
+// o portátil do Windows roda de uma cópia temporária; o caminho que fica é o do .exe original
+const exePath = () => process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE || process.execPath;
+const autostartFile = () => path.join(app.getPath('appData'), 'autostart', 'soundboard.desktop');
+
+// no npm start o executável é o electron "cru", que abriria sem o app
+const canOpenAtLogin = () => app.isPackaged;
+
+function readOpenAtLogin() {
+  if (!canOpenAtLogin()) return false;
+  if (process.platform === 'linux') return fs.existsSync(autostartFile());
+  return app.getLoginItemSettings({ path: exePath(), args: ['--hidden'] }).openAtLogin;
+}
+
+function setOpenAtLogin(on) {
+  if (!canOpenAtLogin()) return;
+  if (process.platform === 'linux') {
+    // o Electron não tem API de login no Linux; o padrão freedesktop é um .desktop em ~/.config/autostart
+    if (!on) {
+      fs.rmSync(autostartFile(), { force: true });
+      return;
+    }
+    fs.mkdirSync(path.dirname(autostartFile()), { recursive: true });
+    fs.writeFileSync(autostartFile(), [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=Soundboard',
+      `Exec="${exePath()}" --hidden`,
+      'X-GNOME-Autostart-enabled=true',
+      '',
+    ].join('\n'));
+    return;
+  }
+  app.setLoginItemSettings({ openAtLogin: on, path: exePath(), args: ['--hidden'] });
+}
+
+let openAtLogin = false; // lido do sistema na abertura e depois de cada mudança
+
 // O tema é aplicado pelo renderer (data-theme + color-scheme). O nativeTheme fica sempre no
 // sistema, senão o prefers-color-scheme passaria a refletir o tema escolhido, e não o do sistema.
 function isDark() {
@@ -250,6 +296,7 @@ function isDark() {
 
 function createWindow() {
   win = new BrowserWindow({
+    show: !startHidden,
     width: 1040,
     height: 720,
     minWidth: 520,
@@ -482,6 +529,10 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
   if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
   if ('closeToTray' in patch) config.closeToTray = !!patch.closeToTray;
+  if ('openAtLogin' in patch) {
+    setOpenAtLogin(!!patch.openAtLogin);
+    openAtLogin = readOpenAtLogin();
+  }
   if ('sort' in patch && SORT_BY.includes(patch.sort?.by)) {
     config.sort = { by: patch.sort.by, dir: patch.sort.dir === 'desc' ? 'desc' : 'asc' };
   }
@@ -506,6 +557,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.atzler.soundboard')
 
 app.whenReady().then(() => {
   loadConfig();
+  openAtLogin = readOpenAtLogin();
   createWindow();
   createTray();
   syncKeyboard();

@@ -250,6 +250,8 @@ body:not([data-view="settings"]) .settings-view,
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
 }
 .setting[hidden] { display: none; }
+.setting.disabled { opacity: .55; cursor: default; }
+.setting.disabled .track { cursor: not-allowed; }
 .setting-text { flex: 1; min-width: 0; }
 .setting-text strong { display: block; font-size: 15px; margin-bottom: 3px; }
 .setting-text p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }

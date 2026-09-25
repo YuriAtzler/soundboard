@@ -199,6 +199,12 @@ function applyState(next) {
   applyTheme();
   $('#exclusive').checked = state.exclusive;
   $('#closeToTray').value = state.closeToTray === false ? 'quit' : 'tray';
+  $('#openAtLogin').checked = !!state.openAtLogin;
+  $('#openAtLogin').disabled = !state.canOpenAtLogin;
+  $('#loginWrap').classList.toggle('disabled', !state.canOpenAtLogin);
+  $('#loginHint').textContent = state.canOpenAtLogin
+    ? 'Abre o Soundboard escondido na bandeja quando você entra no computador, com as teclas já funcionando.'
+    : 'Só funciona no app instalado (no npm start, o sistema abriria o Electron sem o Soundboard).';
   renderProfiles();
   renderOutputs();
   renderKeyboard();
@@ -1261,6 +1267,11 @@ $('#closeHint').textContent = isMac
   : 'Continuando, as teclas seguem funcionando com a janela fechada. O Soundboard fica no ícone perto do relógio, de onde se abre de novo, troca de perfil ou sai.';
 $('#closeToTray').addEventListener('change', async (e) => {
   applyState(await sb.updateSettings({ closeToTray: e.target.value === 'tray' }));
+});
+
+$('#openAtLogin').addEventListener('change', async (e) => {
+  applyState(await sb.updateSettings({ openAtLogin: e.target.checked }));
+  if (e.target.checked && !state.openAtLogin) toast('O sistema não deixou o Soundboard iniciar sozinho');
 });
 
 $('#exclusive').addEventListener('change', async (e) => {
