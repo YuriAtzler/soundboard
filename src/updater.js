@@ -7,6 +7,7 @@
 //   da Release.
 
 const { app, shell } = require('electron');
+const i18n = require('./i18n');
 
 const REPO = 'YuriAtzler/soundboard';
 const CHECK_EVERY = 6 * 60 * 60 * 1000;
@@ -42,7 +43,7 @@ function newer(a, b) {
 // o electron-updater manda a resposta HTTP inteira na mensagem; aqui vira uma frase
 function friendly(err) {
   const msg = String(err?.message || err);
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|net::ERR_/.test(msg)) return 'sem conexão com o GitHub';
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|net::ERR_/.test(msg)) return i18n.t('update.offline');
   return msg.split('\n')[0].slice(0, 120);
 }
 
