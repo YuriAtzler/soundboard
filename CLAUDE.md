@@ -35,6 +35,12 @@ npm run dist:mac   # só num Mac
 npm run dist:linux # AppImage + .deb
 ```
 
+## Release
+
+- `.github/workflows/release.yml`: um push de tag `v*` gera os instaladores em runners Windows, macOS (x64 + arm64) e Linux e publica na Release do GitHub. A versão do `package.json` é sobrescrita pela tag durante o build.
+- Os nomes dos arquivos são fixos, sem versão (`artifactName` no `package.json`), para os links `releases/latest/download/...` do README não quebrarem. Não mude esses nomes sem atualizar o README.
+- Não há assinatura de código (sem certificados), e os avisos que o usuário vê estão documentados no README.
+
 ## Ambiente do dono (WSL2)
 
 - Para rodar `npm start` no WSL é preciso instalar `libnss3` e `libasound2t64`.
