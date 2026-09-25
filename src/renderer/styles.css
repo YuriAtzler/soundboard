@@ -143,16 +143,15 @@ svg {
 .keycap.tiny { min-width: 30px; height: 24px; padding: 0 6px; font-size: 11px; border-bottom-width: 2px; }
 .keycap.tiny.unbound { font-size: 11px; border-bottom-width: 1px; }
 .tab:not(:hover):not(.active) .keycap.tiny.unbound { display: none; }
-.tab-x {
+.tab-more {
   flex: none; display: grid; place-items: center;
   width: 24px; height: 24px; border-radius: 6px; border: none;
   background: transparent; color: var(--muted); cursor: pointer;
   transition: background .15s, color .15s;
 }
-.tab-x svg { width: 14px; height: 14px; }
-.tab:not(:hover) .tab-x:not(:focus-visible) { display: none; }
-.tab-x:hover { background: var(--surface); color: var(--danger); }
-.tabs.single .tab-x { display: none; }
+.tab-more svg { width: 16px; height: 16px; }
+.tab:not(:hover):not(.menu-open) .tab-more:not(:focus-visible) { display: none; }
+.tab-more:hover, .tab.menu-open .tab-more { background: var(--surface); color: var(--text); }
 
 /* pé da sidebar */
 .side-foot {
@@ -534,6 +533,25 @@ body:has(.bulk:not([hidden])) main { padding-bottom: 96px; }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 
+/* ---------- menu suspenso (perfil, +) ---------- */
+.popover {
+  position: fixed; z-index: 40; min-width: 200px; padding: 5px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 16px 40px -10px var(--shadow);
+  animation: pop .12s ease-out;
+}
+.popover[hidden] { display: none; }
+.popover button {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  height: 34px; padding: 0 10px; border: none; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.popover button svg { width: 16px; height: 16px; color: var(--muted); }
+.popover button:hover, .popover button:focus-visible { background: var(--surface-2); outline: none; }
+.popover button.danger, .popover button.danger svg { color: var(--danger); }
+.popover button:disabled { opacity: .4; cursor: default; background: transparent; }
+.popover hr { margin: 5px 4px; border: none; border-top: 1px solid var(--border); }
+
 /* ---------- modal de adicionar/editar ---------- */
 .modal-card.editor {
   align-items: stretch; text-align: left;
@@ -669,6 +687,7 @@ kbd {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30;
   padding: 10px 16px; border-radius: 10px;
   background: var(--text); color: var(--bg); font-weight: 600;
+  max-width: min(560px, calc(100vw - 32px)); text-align: center;
   animation: rise .2s ease-out;
 }
 

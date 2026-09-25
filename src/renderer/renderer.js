@@ -486,13 +486,56 @@ function buildTab(id) {
     e.stopPropagation();
     captureKey(profileTarget(id));
   });
-  tab.querySelector('.tab-x').addEventListener('click', async (e) => {
+  const more = tab.querySelector('.tab-more');
+  more.addEventListener('click', (e) => {
     e.stopPropagation();
-    const profile = state.profiles.find((p) => p.id === id);
-    if (profile.count && !confirm(`Apagar o perfil "${profile.name}" e os ${profile.count} sons dele?`)) return;
-    applyState(await sb.removeProfile(id));
+    profileMenu(id, more);
+  });
+  tab.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    profileMenu(id, { x: e.clientX, y: e.clientY });
   });
   return tab;
+}
+
+function profileMenu(id, at) {
+  const profile = state.profiles.find((p) => p.id === id);
+  openPopover([
+    { label: 'Renomear', icon: 'rename', action: () => renameProfile(id) },
+    { label: profile.keyLabel ? `Trocar tecla (${profile.keyLabel})` : 'Definir tecla', icon: 'key', action: () => captureKey(profileTarget(id)) },
+    { label: 'Exportar…', icon: 'export', action: () => exportProfile(id) },
+    'sep',
+    { label: 'Apagar perfil', icon: 'trash', danger: true, disabled: state.profiles.length === 1, action: () => deleteProfile(id) },
+  ], at, tabs.get(id));
+}
+
+async function deleteProfile(id) {
+  const profile = state.profiles.find((p) => p.id === id);
+  if (profile.count && !confirm(`Apagar o perfil "${profile.name}" e os ${profile.count} sons dele?`)) return;
+  applyState(await sb.removeProfile(id));
+}
+
+async function exportProfile(id) {
+  const res = await sb.exportProfile(id);
+  if (res.ok) toast(`Perfil exportado em ${res.file}`);
+  else if (res.error) toast(`Não foi possível exportar: ${res.error}`);
+}
+
+// importa um .soundboard (escolhido no diálogo ou solto na janela) e conta o que ficou de fora
+async function importProfiles(request) {
+  const res = await request();
+  applyState(res.state);
+  if (res.error) {
+    toast(res.error);
+    return;
+  }
+  const names = res.imported || [];
+  if (!names.length) return;
+  setView('sounds');
+  let msg = names.length === 1 ? `Perfil "${names[0]}" importado` : `${names.length} perfis importados`;
+  if (res.missing) msg += ` · ${res.missing} ${res.missing === 1 ? 'áudio não veio' : 'áudios não vieram'} no arquivo`;
+  if (res.droppedKeys) msg += ` · ${res.droppedKeys} ${res.droppedKeys === 1 ? 'tecla já tinha dono e ficou' : 'teclas já tinham dono e ficaram'} de fora`;
+  toast(msg);
 }
 
 function renameProfile(id) {
@@ -530,11 +573,21 @@ tabsEl.addEventListener('click', (e) => {
   else if (!tab.classList.contains('active')) setNav(false);
 });
 
-$('#addProfile').addEventListener('click', async () => {
-  applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
-  renameProfile(state.activeProfile);
+$('#addProfile').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  openPopover([
+    {
+      label: 'Novo perfil',
+      icon: 'plus',
+      action: async () => {
+        applyState(await sb.createProfile(`Perfil ${state.profiles.length + 1}`));
+        setView('sounds');
+        renameProfile(state.activeProfile);
+      },
+    },
+    { label: 'Importar perfil…', icon: 'import', action: () => importProfiles(sb.importProfile) },
+  ], btn, btn);
 });
-
 // ---------- tema ----------
 
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
@@ -587,6 +640,80 @@ document.addEventListener('click', (e) => {
 systemDark.addEventListener('change', applyTheme);
 state.theme = sb.initialTheme;
 applyTheme();
+
+// ---------- menu suspenso ----------
+
+const popover = $('#popover');
+let popoverOwner = null; // quem abriu o menu (fica marcado enquanto ele está aberto)
+let popoverClosed = { owner: null, at: 0 };
+
+const ICONS = {
+  rename: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>',
+  key: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  export: '<path d="M12 3v12M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
+  import: '<path d="M12 15V3M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+};
+
+// items: [{ label, icon, action, danger, disabled } | 'sep']; at: elemento âncora ou { x, y }
+function openPopover(items, at, owner) {
+  // o mousedown fora já fechou este menu; o clique no mesmo botão não deve reabri-lo
+  if (owner && popoverClosed.owner === owner && performance.now() - popoverClosed.at < 300) return;
+  closePopover();
+  popover.replaceChildren(...items.map((item) => {
+    if (item === 'sep') return document.createElement('hr');
+    const btn = document.createElement('button');
+    btn.setAttribute('role', 'menuitem');
+    btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[item.icon]}</svg>`;
+    btn.append(item.label);
+    btn.classList.toggle('danger', !!item.danger);
+    btn.disabled = !!item.disabled;
+    btn.addEventListener('click', () => {
+      closePopover();
+      item.action();
+    });
+    return btn;
+  }));
+  popover.hidden = false;
+  const box = at instanceof Element ? at.getBoundingClientRect() : { left: at.x, right: at.x, top: at.y, bottom: at.y };
+  const { offsetWidth: w, offsetHeight: h } = popover;
+  const x = Math.max(8, Math.min(box.left, innerWidth - w - 8));
+  const y = box.bottom + 4 + h > innerHeight - 8 ? Math.max(8, box.top - h - 4) : box.bottom + 4;
+  popover.style.left = `${x}px`;
+  popover.style.top = `${y}px`;
+  popoverOwner = owner;
+  owner?.classList.add('menu-open');
+  popover.querySelector('button:not(:disabled)')?.focus();
+}
+
+function closePopover() {
+  if (popover.hidden) return;
+  popover.hidden = true;
+  popoverOwner?.classList.remove('menu-open');
+  popoverClosed = { owner: popoverOwner, at: performance.now() };
+  popoverOwner = null;
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (!popover.hidden && !popover.contains(e.target)) closePopover();
+}, true);
+window.addEventListener('blur', closePopover);
+window.addEventListener('resize', closePopover);
+
+// setas andam entre os itens; Enter/Espaço acionam pelo próprio botão
+function popoverKey(e) {
+  if (e.code === 'Escape') {
+    closePopover();
+    return;
+  }
+  if (e.code !== 'ArrowDown' && e.code !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...popover.querySelectorAll('button:not(:disabled)')];
+  const i = items.indexOf(document.activeElement);
+  const next = e.code === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+  items[next]?.focus();
+}
 
 // ---------- saída de áudio ----------
 
@@ -1203,6 +1330,10 @@ window.addEventListener('keydown', (e) => {
     finishCapture(e);
     return;
   }
+  if (!popover.hidden) {
+    popoverKey(e);
+    return;
+  }
   if (editorOpen()) {
     // com o modal aberto, as teclas são dele (Enter confirma pelo submit do form)
     if (e.code === 'Escape') {
@@ -1309,7 +1440,12 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   dragDepth = 0;
   drop.hidden = true;
-  enqueue(await sb.checkFiles(e.dataTransfer.files));
+  // .soundboard vira perfil; o resto segue para o modal de áudio
+  const files = [...e.dataTransfer.files];
+  const packs = files.filter((f) => f.name.toLowerCase().endsWith('.soundboard'));
+  for (const pack of packs) await importProfiles(() => sb.importProfileFile(pack));
+  const audio = files.filter((f) => !packs.includes(f));
+  if (audio.length || !packs.length) enqueue(await sb.checkFiles(audio));
 });
 
 // ---------- toast ----------
@@ -1320,7 +1456,8 @@ function toast(msg) {
   el.textContent = msg;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 2600);
+  // mensagens longas (importação) ficam mais tempo
+  toastTimer = setTimeout(() => (el.hidden = true), Math.max(2600, msg.length * 55));
 }
 
 sb.getState().then((s) => {

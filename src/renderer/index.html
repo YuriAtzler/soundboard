@@ -20,7 +20,7 @@
       <section class="side-section profiles-section">
         <div class="side-head">
           <span>Perfis</span>
-          <button id="addProfile" class="side-add" title="Novo perfil">
+          <button id="addProfile" class="side-add" title="Novo perfil ou importar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </div>
@@ -237,7 +237,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
       </div>
       <strong>Solte para adicionar</strong>
-      <span>Cada arquivo abre para você escolher o trecho e a tecla</span>
+      <span>Áudios abrem para escolher o trecho e a tecla; arquivos .soundboard viram perfis</span>
     </div>
   </div>
 
@@ -306,6 +306,8 @@
     </div>
   </div>
 
+  <div id="popover" class="popover" role="menu" hidden></div>
+
   <div id="toast" class="toast" hidden></div>
 
   <template id="tabTpl">
@@ -313,8 +315,8 @@
       <input class="tab-name" readonly spellcheck="false" />
       <span class="tab-count"></span>
       <button class="keycap tiny" title="Tecla para abrir este perfil (vale em qualquer perfil)"></button>
-      <button class="tab-x" title="Apagar perfil">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      <button class="tab-more" title="Mais opções">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
       </button>
     </div>
   </template>

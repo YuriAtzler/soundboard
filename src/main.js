@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
+const { writeZip, readZip } = require('./archive');
 
 const THEMES = ['system', 'light', 'dark'];
 const SORT_BY = ['added', 'name', 'key'];
@@ -242,6 +243,123 @@ function importFile(srcPath) {
   activeProfile().sounds.push(sound);
   return sound;
 }
+
+// ---------- exportar e importar perfis ----------
+
+// Um .soundboard é um ZIP com soundboard.json (o manifesto) e os áudios em sounds/.
+const EXPORT_FORMAT = 'soundboard-export';
+const EXPORT_VERSION = 1;
+
+// sem os ids: a importação gera novos, para não colidir com o que já existe
+function profileForExport(p) {
+  return {
+    name: p.name,
+    accelerator: p.accelerator,
+    keyLabel: p.keyLabel,
+    sounds: p.sounds.map(({ id, ...sound }) => sound),
+  };
+}
+
+function writeExport(outPath, type, profiles, settings) {
+  const manifest = {
+    format: EXPORT_FORMAT,
+    version: EXPORT_VERSION,
+    type,
+    app: app.getVersion(),
+    exportedAt: new Date().toISOString(),
+    profiles: profiles.map(profileForExport),
+    ...(settings && { settings }),
+  };
+  const files = [...new Set(profiles.flatMap((p) => p.sounds.map((s) => s.file)))];
+  writeZip(outPath, [
+    { name: 'soundboard.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) },
+    // lido só na hora de gravar, um áudio por vez
+    ...files.map((f) => ({ name: `sounds/${f}`, data: () => fs.readFileSync(path.join(soundsDir, f)) })),
+  ]);
+}
+
+function readExport(file) {
+  const zip = readZip(file);
+  let manifest;
+  try {
+    manifest = JSON.parse(zip.read('soundboard.json')?.toString('utf8'));
+  } catch {
+    manifest = null;
+  }
+  if (manifest?.format !== EXPORT_FORMAT || !Array.isArray(manifest.profiles)) {
+    throw new Error('Este arquivo não é uma exportação do Soundboard');
+  }
+  if (manifest.version > EXPORT_VERSION) {
+    throw new Error('O arquivo veio de uma versão mais nova do Soundboard; atualize o app para importar');
+  }
+  return { manifest, zip };
+}
+
+function uniqueProfileName(name) {
+  let candidate = name;
+  for (let i = 2; config.profiles.some((p) => p.name === candidate); i++) candidate = `${name} (${i})`;
+  return candidate;
+}
+
+// Cria os perfis do arquivo com ids novos. Os áudios vão para sounds/ com nomes novos
+// (o caminho de dentro do ZIP nunca vira caminho no disco). Teclas que já têm dono ficam de
+// fora: a do perfil vale em qualquer lugar, então só entra se estiver livre; a de um som só
+// perde para "parar tudo" e as teclas de perfil.
+function importProfiles(manifest, zip) {
+  const created = [];
+  let droppedKeys = 0;
+  let missing = 0;
+  const globalOwner = (acc) =>
+    acc === config.stopAccelerator || config.profiles.some((p) => p.accelerator === acc);
+  for (const src of manifest.profiles) {
+    const p = newProfile(uniqueProfileName(String(src.name || 'Perfil importado').slice(0, 60)));
+    const inUse = (acc) => globalOwner(acc) || config.profiles.some((x) => x.sounds.some((s) => s.accelerator === acc));
+    if (src.accelerator && !inUse(src.accelerator)) {
+      p.accelerator = src.accelerator;
+      p.keyLabel = src.keyLabel;
+    } else if (src.accelerator) droppedKeys++;
+    for (const s of Array.isArray(src.sounds) ? src.sounds : []) {
+      const ext = path.extname(String(s.file || '')).toLowerCase();
+      let data = null;
+      try {
+        if (isAudio(`x${ext}`)) data = zip.read(`sounds/${s.file}`);
+      } catch {
+        data = null; // áudio corrompido: pula só ele
+      }
+      if (!data) {
+        missing++;
+        continue;
+      }
+      const id = crypto.randomUUID();
+      fs.writeFileSync(path.join(soundsDir, id + ext), data);
+      const volume = Number(s.volume);
+      const sound = {
+        id,
+        file: id + ext,
+        name: String(s.name || 'Sem nome').slice(0, 120),
+        accelerator: null,
+        keyLabel: null,
+        volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1,
+        color: Number.isInteger(s.color) ? s.color : 0,
+        start: 0,
+        end: null,
+      };
+      patchSound(sound, { start: s.start, end: s.end });
+      const acc = s.accelerator;
+      if (acc && !globalOwner(acc) && acc !== p.accelerator && !p.sounds.some((x) => x.accelerator === acc)) {
+        sound.accelerator = acc;
+        sound.keyLabel = s.keyLabel;
+      } else if (acc) droppedKeys++;
+      p.sounds.push(sound);
+    }
+    config.profiles.push(p);
+    created.push(p);
+  }
+  return { created, droppedKeys, missing };
+}
+
+const SOUNDBOARD_FILTER = [{ name: 'Soundboard', extensions: ['soundboard'] }];
+const safeFileName = (name) => name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'perfil';
 
 // ---------- iniciar com o sistema ----------
 
@@ -495,6 +613,43 @@ ipcMain.handle('profiles:remove', (_e, id) => {
   saveConfig();
   registerShortcuts();
   return publicState();
+});
+
+ipcMain.handle('profiles:export', async (_e, id) => {
+  const p = config.profiles.find((x) => x.id === id);
+  if (!p) return { ok: false };
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Exportar perfil',
+    defaultPath: path.join(app.getPath('documents'), `${safeFileName(p.name)}.soundboard`),
+    filters: SOUNDBOARD_FILTER,
+  });
+  if (res.canceled || !res.filePath) return { ok: false };
+  try {
+    writeExport(res.filePath, 'profile', [p]);
+    return { ok: true, file: path.basename(res.filePath) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// sem caminho, pergunta o arquivo; com caminho (arquivo solto na janela), importa direto
+ipcMain.handle('profiles:import', async (_e, filePath) => {
+  let file = filePath;
+  if (!file) {
+    const res = await dialog.showOpenDialog(win, { title: 'Importar perfil', properties: ['openFile'], filters: SOUNDBOARD_FILTER });
+    if (res.canceled) return { state: publicState() };
+    file = res.filePaths[0];
+  }
+  try {
+    const { manifest, zip } = readExport(file);
+    const { created, droppedKeys, missing } = importProfiles(manifest, zip);
+    if (created.length) config.activeProfile = created[0].id;
+    saveConfig();
+    registerShortcuts();
+    return { state: publicState(), imported: created.map((p) => p.name), droppedKeys, missing };
+  } catch (err) {
+    return { state: publicState(), error: err.message };
+  }
 });
 
 ipcMain.handle('profiles:switch', (_e, id) => {
