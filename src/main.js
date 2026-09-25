@@ -6,6 +6,7 @@ const { pathToFileURL } = require('url');
 const { KeyboardWatcher } = require('./keyboard');
 
 const THEMES = ['system', 'light', 'dark'];
+const SORT_BY = ['added', 'name', 'key'];
 const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm', 'opus'];
 
 let win;
@@ -21,6 +22,7 @@ let config = {
   exclusive: false,
   outputDevice: 'default',
   theme: 'system', // 'system' | 'light' | 'dark'
+  sort: { by: 'added', dir: 'asc' }, // ordem da tabela de sons; 'added' = ordem de adição
   inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
   stopAccelerator: null,
   stopKeyLabel: null,
@@ -107,6 +109,7 @@ function loadConfig() {
   }
   delete config.globalHotkeys; // era uma chave; hoje os atalhos globais estão sempre ligados
   if (!THEMES.includes(config.theme)) config.theme = 'system';
+  if (!SORT_BY.includes(config.sort?.by)) config.sort = { by: 'added', dir: 'asc' };
   if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
   if (!activeProfile()) config.activeProfile = config.profiles[0].id;
   // descarta entradas cujo arquivo sumiu
@@ -370,6 +373,9 @@ ipcMain.handle('settings:update', (_e, patch) => {
   if ('exclusive' in patch) config.exclusive = !!patch.exclusive;
   if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
   if ('theme' in patch && THEMES.includes(patch.theme)) config.theme = patch.theme;
+  if ('sort' in patch && SORT_BY.includes(patch.sort?.by)) {
+    config.sort = { by: patch.sort.by, dir: patch.sort.dir === 'desc' ? 'desc' : 'asc' };
+  }
   // o renderer só limpa; quem escolhe o teclado é o keyboard:identify
   if ('inputDevice' in patch && !patch.inputDevice) config.inputDevice = null;
   if ('stopAccelerator' in patch) {

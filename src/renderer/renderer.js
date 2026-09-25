@@ -11,7 +11,7 @@ const tabsEl = $('#tabs');
 
 let state = {
   sounds: [], profiles: [], activeProfile: null, masterVolume: 1,
-  exclusive: false, outputDevice: 'default', theme: 'system', inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
+  exclusive: false, outputDevice: 'default', theme: 'system', sort: { by: 'added', dir: 'asc' }, inputDevice: null, deviceMode: false, keyboardError: null, stopAccelerator: null, stopKeyLabel: null, failedHotkeys: [],
 };
 const players = new Map(); // id -> HTMLAudioElement
 const rows = new Map(); // id -> linha da tabela
@@ -202,12 +202,73 @@ function applyState(next) {
     if (!row) {
       row = buildRow(sound.id);
       rows.set(sound.id, row);
-      grid.appendChild(row);
     }
     updateRow(row, sound);
   }
   empty.hidden = state.sounds.length > 0;
   list.hidden = !state.sounds.length;
+  renderList();
+}
+
+// ---------- busca e ordenação ----------
+
+const search = $('#search');
+// minúsculas e sem acento, para "acao" achar "Ação"
+const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+
+function sortedSounds() {
+  const { by, dir } = state.sort;
+  if (by === 'added') return state.sounds;
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...state.sounds].sort((a, b) => {
+    if (by === 'key') {
+      // sons sem tecla ficam sempre no fim
+      if (!a.keyLabel || !b.keyLabel) return !a.keyLabel - !b.keyLabel;
+      return sign * collator.compare(a.keyLabel, b.keyLabel);
+    }
+    return sign * collator.compare(a.name, b.name);
+  });
+}
+
+// ordena as linhas e esconde as que não batem com a busca
+function renderList() {
+  const query = fold(search.value.trim());
+  let shown = 0;
+  for (const sound of sortedSounds()) {
+    const row = rows.get(sound.id);
+    grid.appendChild(row); // appendChild move a linha para o fim, então a ordem final é a do array
+    row.hidden = !!query && !fold(sound.name).includes(query);
+    if (!row.hidden) shown++;
+  }
+  const noResults = $('#noResults');
+  noResults.hidden = shown > 0 || !state.sounds.length;
+  noResults.textContent = `Nenhum som com "${search.value.trim()}"`;
+  for (const btn of document.querySelectorAll('.sort')) {
+    const active = btn.dataset.sort === state.sort.by;
+    btn.classList.toggle('asc', active && state.sort.dir === 'asc');
+    btn.classList.toggle('desc', active && state.sort.dir === 'desc');
+  }
+}
+
+search.addEventListener('input', renderList);
+search.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  search.value = '';
+  renderList();
+  search.blur();
+});
+
+// clicar na coluna alterna: crescente → decrescente → ordem de adição
+for (const btn of document.querySelectorAll('.sort')) {
+  btn.addEventListener('click', () => {
+    const { by, dir } = state.sort;
+    let next = { by: btn.dataset.sort, dir: 'asc' };
+    if (by === btn.dataset.sort) next = dir === 'asc' ? { by, dir: 'desc' } : { by: 'added', dir: 'asc' };
+    state.sort = next;
+    renderList();
+    sb.updateSettings({ sort: next });
+  });
 }
 
 function buildRow(id) {
@@ -627,6 +688,13 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.repeat) return;
+  // Ctrl/Cmd+F foca a busca, a não ser que a combinação esteja vinculada a algo
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && !e.altKey && !e.shiftKey && !isBound(eventToShortcut(e).accelerator)) {
+    e.preventDefault();
+    search.focus();
+    search.select();
+    return;
+  }
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
 
   const sc = eventToShortcut(e);

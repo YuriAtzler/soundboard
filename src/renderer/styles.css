@@ -212,12 +212,27 @@ svg {
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
-.title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.title { flex: none; max-width: 40%; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
 .title h2 {
   margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .count { flex: none; color: var(--muted); }
+.search {
+  flex: 0 1 240px; min-width: 110px; margin-left: auto;
+  display: flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 10px;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: text;
+  transition: border-color .15s;
+}
+.search:focus-within { border-color: var(--accent); }
+.search svg { flex: none; width: 16px; height: 16px; }
+.search input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  color: var(--text); font: inherit;
+}
+.search input::placeholder { color: var(--muted); }
 .controls { flex: none; display: flex; align-items: center; gap: 8px; }
 .menu {
   display: none; place-items: center; flex: none;
@@ -310,6 +325,20 @@ main { --gap: 20px; padding: var(--gap) 24px 32px; }
   color: var(--muted);
 }
 .thead > span { padding: 0 8px; }
+.sort {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: 0 -6px; padding: 4px 6px; border-radius: 6px; border: none;
+  background: transparent; color: inherit; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+}
+.sort:hover { background: var(--surface-2); color: var(--text); }
+.sort svg { width: 12px; height: 12px; stroke-width: 2.5; opacity: 0; transition: transform .15s; }
+.sort:hover svg { opacity: .4; }
+.sort.asc, .sort.desc { color: var(--text); }
+.sort.asc svg, .sort.desc svg { opacity: 1; }
+.sort.asc svg { transform: rotate(180deg); }
+.row[hidden], .no-results[hidden] { display: none; }
+.no-results { margin: 0; padding: 28px 16px; text-align: center; color: var(--muted); }
 /* cobre a faixa entre o topo e o cabeçalho, senão as linhas aparecem passando por ali */
 .thead::before {
   content: ""; position: absolute; left: -1px; right: -1px; bottom: 100%; height: var(--gap);

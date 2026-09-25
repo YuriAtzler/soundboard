@@ -89,6 +89,10 @@
           <h2 id="profileName"></h2>
           <span id="profileCount" class="count"></span>
         </div>
+        <label class="search" title="Buscar pelo nome (Ctrl+F)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="Buscar som" spellcheck="false" />
+        </label>
         <div class="controls">
           <button id="stopAll" class="btn" title="Parar todos os sons (Esc)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -113,12 +117,13 @@
         <section id="list" class="table" role="table" aria-label="Sons">
           <div class="thead" role="row">
             <span role="columnheader"></span>
-            <span role="columnheader">Nome</span>
-            <span role="columnheader">Tecla</span>
+            <span role="columnheader"><button class="sort" data-sort="name" title="Ordenar por nome">Nome <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button></span>
+            <span role="columnheader"><button class="sort" data-sort="key" title="Ordenar por tecla">Tecla <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button></span>
             <span role="columnheader">Volume</span>
             <span role="columnheader"></span>
           </div>
           <div id="grid" class="tbody" role="rowgroup"></div>
+          <p id="noResults" class="no-results" hidden></p>
         </section>
       </main>
     </div>
