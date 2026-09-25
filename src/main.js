@@ -836,6 +836,12 @@ ipcMain.handle('settings:update', (_e, patch) => {
 });
 
 // uma instância só: abrir de novo mostra a janela escondida, em vez de disputar as teclas
+// No Mac, o Chromium registra o atalho global pela tecla que produz o caractere no layout atual
+// (LayoutAwareGlobalHotkeys), procurando do código 0 ao 127. Para o num1 o caractere é '1', e o
+// 1 de cima (código 18) vem antes do 1 do numpad (83): o atalho ia para a tecla errada. Sem o
+// recurso vale a tecla física, que é também o que a captura grava (KeyboardEvent.code).
+if (process.platform === 'darwin') app.commandLine.appendSwitch('disable-features', 'LayoutAwareGlobalHotkeys');
+
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => win && showWindow());
 
