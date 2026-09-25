@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const { KeyboardWatcher } = require('./keyboard');
 
 const AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm', 'opus'];
 
@@ -10,8 +11,74 @@ let win;
 let dataDir;
 let soundsDir;
 let configPath;
-let config = { globalHotkeys: false, masterVolume: 1, stopAccelerator: null, stopKeyLabel: null, sounds: [] };
+let config = {
+  globalHotkeys: false,
+  masterVolume: 1,
+  exclusive: false,
+  outputDevice: 'default',
+  inputDevice: null, // { id, label } do teclado escolhido (só Windows); null = qualquer teclado
+  stopAccelerator: null,
+  stopKeyLabel: null,
+  activeProfile: null,
+  profiles: [],
+};
 let failedHotkeys = [];
+// enquanto o renderer captura uma tecla, os atalhos globais ficam desligados,
+// senão o sistema "engole" a tecla antes de ela chegar à janela
+let capturing = false;
+
+const keyboard = new KeyboardWatcher();
+let keyboardError = null;
+let identifying = null; // resolve da promessa de "Identificar teclado", enquanto espera a tecla
+
+// Com um teclado escolhido, as teclas chegam pelo Raw Input (keyboard.js) e o globalShortcut
+// fica desligado, senão ele dispararia com a tecla vinda de qualquer teclado.
+function deviceMode() {
+  return process.platform === 'win32' && !!config.inputDevice && !keyboardError;
+}
+
+function syncKeyboard() {
+  const needed = process.platform === 'win32' && (!!config.inputDevice || !!identifying);
+  if (needed && !keyboard.running && !keyboardError) keyboard.start(dataDir);
+  if (!needed && keyboard.running) keyboard.stop();
+}
+
+keyboard.on('key', (k) => {
+  if (identifying) {
+    if (k.code === 'Escape') return; // Esc cancela pelo renderer
+    config.inputDevice = { id: k.deviceId, label: k.label };
+    saveConfig();
+    finishIdentify();
+    return;
+  }
+  if (config.inputDevice && k.deviceId === config.inputDevice.id && !capturing) {
+    win?.webContents.send('device-key', k);
+  }
+});
+
+keyboard.on('error', (message) => {
+  keyboardError = message;
+  console.error('Leitura de teclados falhou:', message);
+  registerShortcuts(); // volta para o globalShortcut
+  if (identifying) finishIdentify();
+  else win?.webContents.send('state', publicState());
+});
+
+function finishIdentify() {
+  const resolve = identifying;
+  identifying = null;
+  syncKeyboard();
+  registerShortcuts();
+  resolve(publicState());
+}
+
+function newProfile(name) {
+  return { id: crypto.randomUUID(), name, accelerator: null, keyLabel: null, sounds: [] };
+}
+
+function activeProfile() {
+  return config.profiles.find((p) => p.id === config.activeProfile);
+}
 
 function loadConfig() {
   dataDir = app.getPath('userData');
@@ -23,8 +90,22 @@ function loadConfig() {
   } catch {
     // primeira execução ou arquivo corrompido: começa vazio
   }
+  // formato antigo (sem perfis): os sons ficavam na raiz
+  if (Array.isArray(config.sounds)) {
+    if (!config.profiles.length) {
+      const p = newProfile('Principal');
+      p.sounds = config.sounds;
+      config.profiles.push(p);
+    }
+    delete config.sounds;
+    saveConfig();
+  }
+  if (!config.profiles.length) config.profiles.push(newProfile('Principal'));
+  if (!activeProfile()) config.activeProfile = config.profiles[0].id;
   // descarta entradas cujo arquivo sumiu
-  config.sounds = config.sounds.filter((s) => fs.existsSync(path.join(soundsDir, s.file)));
+  for (const p of config.profiles) {
+    p.sounds = p.sounds.filter((s) => fs.existsSync(path.join(soundsDir, s.file)));
+  }
 }
 
 function saveConfig() {
@@ -32,10 +113,18 @@ function saveConfig() {
 }
 
 function publicState() {
+  const { profiles, ...settings } = config;
   return {
-    ...config,
+    ...settings,
     failedHotkeys,
-    sounds: config.sounds.map((s) => ({
+    deviceMode: deviceMode(),
+    keyboardError,
+    profiles: profiles.map(({ id, name, accelerator, keyLabel, sounds }) => ({
+      id, name, accelerator, keyLabel, count: sounds.length,
+      // para o renderer avisar quando uma tecla sai de um som de outro perfil
+      soundKeys: sounds.filter((s) => s.accelerator).map((s) => ({ name: s.name, accelerator: s.accelerator })),
+    })),
+    sounds: activeProfile().sounds.map((s) => ({
       ...s,
       url: pathToFileURL(path.join(soundsDir, s.file)).href,
     })),
@@ -46,28 +135,57 @@ function registerShortcuts() {
   globalShortcut.unregisterAll();
   const failed = [];
   failedHotkeys = failed;
-  if (!config.globalHotkeys) return;
-  if (config.stopAccelerator) {
+  if (!config.globalHotkeys || capturing || deviceMode()) return;
+  const register = (accelerator, fn) => {
+    if (!accelerator) return;
     try {
-      const ok = globalShortcut.register(config.stopAccelerator, () => {
-        win?.webContents.send('stop-all');
-      });
-      if (!ok) failed.push(config.stopAccelerator);
+      if (!globalShortcut.register(accelerator, fn)) failed.push(accelerator);
     } catch {
-      failed.push(config.stopAccelerator);
+      failed.push(accelerator);
+    }
+  };
+  register(config.stopAccelerator, () => win?.webContents.send('stop-all'));
+  for (const p of config.profiles) {
+    register(p.accelerator, () => {
+      switchProfile(p.id);
+      win?.webContents.send('state', publicState());
+    });
+  }
+  for (const s of activeProfile().sounds) {
+    register(s.accelerator, () => win?.webContents.send('play', s.id));
+  }
+}
+
+// Uma tecla tem um só dono. Sons só valem no próprio perfil, mas "parar tudo" e as
+// teclas de troca de perfil valem sempre; por isso estas disputam com os sons de
+// todos os perfis (scope), e um som só disputa com os sons do perfil ativo.
+function releaseAccelerator(accelerator, owner, scope) {
+  if (!accelerator) return;
+  for (const p of scope) {
+    for (const s of p.sounds) {
+      if (s !== owner && s.accelerator === accelerator) {
+        s.accelerator = null;
+        s.keyLabel = null;
+      }
     }
   }
-  for (const s of config.sounds) {
-    if (!s.accelerator) continue;
-    try {
-      const ok = globalShortcut.register(s.accelerator, () => {
-        win?.webContents.send('play', s.id);
-      });
-      if (!ok) failed.push(s.accelerator);
-    } catch {
-      failed.push(s.accelerator);
+  for (const p of config.profiles) {
+    if (p !== owner && p.accelerator === accelerator) {
+      p.accelerator = null;
+      p.keyLabel = null;
     }
   }
+  if (owner !== 'stop' && config.stopAccelerator === accelerator) {
+    config.stopAccelerator = null;
+    config.stopKeyLabel = null;
+  }
+}
+
+function switchProfile(id) {
+  if (!config.profiles.some((p) => p.id === id) || id === config.activeProfile) return;
+  config.activeProfile = id;
+  saveConfig();
+  registerShortcuts();
 }
 
 function importFile(srcPath) {
@@ -85,7 +203,7 @@ function importFile(srcPath) {
     volume: 1,
     color: Math.floor(Math.random() * 6),
   };
-  config.sounds.push(sound);
+  activeProfile().sounds.push(sound);
   return sound;
 }
 
@@ -130,67 +248,114 @@ ipcMain.handle('sounds:import', (_e, paths) => {
 });
 
 ipcMain.handle('sounds:update', (_e, id, patch) => {
-  const s = config.sounds.find((x) => x.id === id);
+  const s = activeProfile().sounds.find((x) => x.id === id);
   if (!s) return publicState();
   const allowed = ['name', 'accelerator', 'keyLabel', 'volume', 'color'];
   for (const k of allowed) if (k in patch) s[k] = patch[k];
-  // uma tecla só pode pertencer a um som (ou ao "parar tudo")
-  if (patch.accelerator) {
-    for (const o of config.sounds) {
-      if (o.id !== id && o.accelerator === patch.accelerator) {
-        o.accelerator = null;
-        o.keyLabel = null;
-      }
-    }
-    if (config.stopAccelerator === patch.accelerator) {
-      config.stopAccelerator = null;
-      config.stopKeyLabel = null;
-    }
-  }
+  releaseAccelerator(patch.accelerator, s, [activeProfile()]);
   saveConfig();
   if ('accelerator' in patch) registerShortcuts();
   return publicState();
 });
 
 ipcMain.handle('sounds:remove', (_e, id) => {
-  const s = config.sounds.find((x) => x.id === id);
+  const profile = activeProfile();
+  const s = profile.sounds.find((x) => x.id === id);
   if (s) {
     fs.rmSync(path.join(soundsDir, s.file), { force: true });
-    config.sounds = config.sounds.filter((x) => x.id !== id);
+    profile.sounds = profile.sounds.filter((x) => x.id !== id);
     saveConfig();
     registerShortcuts();
   }
   return publicState();
 });
 
+ipcMain.handle('profiles:create', (_e, name) => {
+  const p = newProfile(name);
+  config.profiles.push(p);
+  switchProfile(p.id);
+  return publicState();
+});
+
+ipcMain.handle('profiles:update', (_e, id, patch) => {
+  const p = config.profiles.find((x) => x.id === id);
+  if (!p) return publicState();
+  for (const k of ['name', 'accelerator', 'keyLabel']) if (k in patch) p[k] = patch[k];
+  releaseAccelerator(patch.accelerator, p, config.profiles);
+  saveConfig();
+  if ('accelerator' in patch) registerShortcuts();
+  return publicState();
+});
+
+ipcMain.handle('profiles:remove', (_e, id) => {
+  const p = config.profiles.find((x) => x.id === id);
+  if (!p || config.profiles.length === 1) return publicState();
+  for (const s of p.sounds) fs.rmSync(path.join(soundsDir, s.file), { force: true });
+  config.profiles = config.profiles.filter((x) => x !== p);
+  if (config.activeProfile === id) config.activeProfile = config.profiles[0].id;
+  saveConfig();
+  registerShortcuts();
+  return publicState();
+});
+
+ipcMain.handle('profiles:switch', (_e, id) => {
+  switchProfile(id);
+  return publicState();
+});
+
+ipcMain.handle('capture:set', (_e, on) => {
+  capturing = !!on;
+  registerShortcuts();
+  return publicState();
+});
+
+ipcMain.handle('keyboard:identify', () => {
+  if (process.platform !== 'win32') return publicState();
+  identifying?.(publicState()); // um pedido anterior ainda aberto
+  keyboardError = null; // tenta de novo se o auxiliar tinha falhado
+  return new Promise((resolve) => {
+    identifying = resolve;
+    syncKeyboard();
+  });
+});
+
+ipcMain.handle('keyboard:cancel', () => {
+  if (identifying) finishIdentify();
+  return publicState();
+});
+
 ipcMain.handle('settings:update', (_e, patch) => {
   if ('globalHotkeys' in patch) config.globalHotkeys = !!patch.globalHotkeys;
   if ('masterVolume' in patch) config.masterVolume = patch.masterVolume;
+  if ('exclusive' in patch) config.exclusive = !!patch.exclusive;
+  if ('outputDevice' in patch) config.outputDevice = patch.outputDevice || 'default';
+  // o renderer só limpa; quem escolhe o teclado é o keyboard:identify
+  if ('inputDevice' in patch && !patch.inputDevice) config.inputDevice = null;
   if ('stopAccelerator' in patch) {
     config.stopAccelerator = patch.stopAccelerator;
     config.stopKeyLabel = patch.stopKeyLabel;
-    for (const o of config.sounds) {
-      if (patch.stopAccelerator && o.accelerator === patch.stopAccelerator) {
-        o.accelerator = null;
-        o.keyLabel = null;
-      }
-    }
+    releaseAccelerator(patch.stopAccelerator, 'stop', config.profiles);
   }
   saveConfig();
-  if ('globalHotkeys' in patch || 'stopAccelerator' in patch) registerShortcuts();
+  if ('inputDevice' in patch) syncKeyboard();
+  if ('globalHotkeys' in patch || 'stopAccelerator' in patch || 'inputDevice' in patch) registerShortcuts();
   return publicState();
 });
 
 app.whenReady().then(() => {
   loadConfig();
   createWindow();
+  syncKeyboard();
   registerShortcuts();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  keyboard.stop();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

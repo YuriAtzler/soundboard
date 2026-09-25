@@ -14,8 +14,14 @@ npm start
   `Esc` cancela, `Backspace` remove o vínculo.
 - **Tocar**: aperte a tecla (apertar de novo reinicia) ou clique no botão de play. `Esc` para tudo.
 - **Atalhos globais**: com a chave ligada, as teclas funcionam mesmo com o app em segundo plano.
-  Use teclas como F1–F12 ou combinações (ex.: `Ctrl+1`), porque o atalho global "rouba" a tecla dos outros apps.
+  Use teclas como F1–F12 ou combinações (ex.: `Ctrl+1`, `Ctrl+Num 1`), porque o atalho global "rouba" a tecla dos outros apps.
+  No Windows, deixe o NumLock ligado para usar o teclado numérico como atalho global.
 - Nome e volume de cada som são editáveis no card.
+- **Perfis**: cada aba abaixo do topo é um conjunto separado de sons e teclas (ex.: "Live", "Jogo").
+  `+` cria um perfil, um duplo clique no nome renomeia, e a tecla da aba troca de perfil de qualquer lugar.
+- **Um som por vez**: com a chave ligada, tocar um som corta o que estiver tocando.
+- **Teclado dos sons** (só Windows): escolha "Identificar teclado…" e aperte uma tecla no teclado que vai disparar os sons, por exemplo um teclado numérico USB. Daí em diante só ele dispara os sons, e as mesmas teclas nos outros teclados ficam livres. Ctrl/Alt/Shift podem vir de qualquer teclado. A tecla também chega ao app em foco, então prefira teclas que não façam nada nele.
+- **Saída de áudio**: escolha onde os sons tocam (fone, caixa ou um cabo virtual, como o VB-Cable, para mandar ao Discord).
 
 Os áudios são copiados para a pasta de dados do app, então o arquivo original pode ser movido ou apagado.
 

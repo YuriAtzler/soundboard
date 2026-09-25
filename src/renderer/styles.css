@@ -99,6 +99,60 @@ svg {
 .switch input:checked + .track .thumb { transform: translateX(16px); background: #fff; }
 .switch input:checked ~ span:last-child { color: var(--text); }
 
+/* ---------- perfis e saída ---------- */
+.profilebar {
+  flex-basis: 100%;
+  display: flex; align-items: center; gap: 6px;
+  margin: -4px 0 -6px;
+}
+.tabs { display: flex; gap: 6px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+.tab {
+  flex: none; display: flex; align-items: center; gap: 4px;
+  height: 34px; padding: 0 4px 0 6px;
+  border-radius: 10px; border: 1px solid transparent;
+  color: var(--muted); cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.tab:hover { background: var(--surface); }
+.tab.active { background: var(--surface); border-color: var(--border); color: var(--text); }
+.tab-name {
+  field-sizing: content; min-width: 3ch; max-width: 22ch;
+  border: none; outline: none; background: transparent; color: inherit;
+  font: inherit; font-weight: 600; padding: 4px 4px; border-radius: 6px;
+  cursor: inherit; text-overflow: ellipsis;
+}
+.tab-name:not([readonly]) { background: var(--surface-2); cursor: text; }
+/* só vira campo de texto ao renomear; antes disso o clique é da aba */
+.tab-name[readonly] { pointer-events: none; }
+.keycap.tiny { min-width: 30px; height: 24px; padding: 0 6px; font-size: 11px; border-bottom-width: 2px; }
+.keycap.tiny.unbound { font-size: 11px; border-bottom-width: 1px; }
+.tab:not(.active) .keycap.tiny.unbound, .tab:not(.active) .tab-x { display: none; }
+.tab-x, .tab-add {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 6px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tab-x svg, .tab-add svg { width: 14px; height: 14px; }
+.tab-x { opacity: 0; }
+.tab:hover .tab-x, .tab-x:focus-visible { opacity: 1; }
+.tab-x:hover { background: var(--surface-2); color: #ff5d6c; }
+.tabs.single .tab-x { display: none; }
+.tab-add { width: 30px; height: 30px; }
+.tab-add:hover { background: var(--surface); color: var(--text); }
+
+.switch.exclusive { margin-left: auto; flex: none; padding-left: 12px; }
+.output { margin-left: 12px; display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
+.output[hidden] { display: none; }
+.output svg { flex: none; width: 16px; height: 16px; }
+.output select {
+  max-width: 220px; min-width: 0; height: 30px; padding: 0 8px;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+  text-overflow: ellipsis;
+}
+.output select:hover { border-color: var(--accent); }
+
 /* ---------- range ---------- */
 /* --fill vem do renderer (paintRange); --range-c é a cor da parte preenchida */
 input[type=range] {
@@ -274,4 +328,5 @@ kbd {
   .card { gap: 10px; }
   .vol { width: 70px; }
   .vol-wrap svg { display: none; }
+  .output select { max-width: 150px; }
 }
